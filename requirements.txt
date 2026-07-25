@@ -1,0 +1,21 @@
+# TFS Label Maker — Python runtime dependencies.
+# Requires Python >= 3.11 (tested on 3.11.14). See pyproject.toml.
+
+# GUI framework (Qt for Python). The app is built/tested against 6.7.1.
+# QtQuick.Controls.TreeView and QtQuick.Effects.MultiEffect both require 6.5+.
+PySide6>=6.7.1
+
+# TIFF tag reading and writing. Parses the FEI INI block in tag 34682 for
+# us, and round-trips 34680/34682/34683 byte-identically via extratags.
+tifffile>=2024.1.30
+
+# Pixel compositing for the burned-in watermark, and PNG chunk handling.
+Pillow>=10.0
+
+# Array handling for the image round trip.
+numpy>=1.24
+
+# COM automation for "Send to active PPT". Windows-only and optional:
+# the import is guarded, and the PowerPoint card disables itself when it
+# is missing, so the rest of the app runs without it.
+pywin32>=306; sys_platform == "win32"

@@ -1,0 +1,11 @@
+module Components
+Card 1.0 Card.qml
+ColorPicker 1.0 ColorPicker.qml
+CustomSpinBox 1.0 CustomSpinBox.qml
+DropZone 1.0 DropZone.qml
+LabelPreview 1.0 LabelPreview.qml
+MetadataTree 1.0 MetadataTree.qml
+OutputPanel 1.0 OutputPanel.qml
+SettingsPanel 1.0 SettingsPanel.qml
+StatusBar 1.0 StatusBar.qml
+ToolTippedLabel 1.0 ToolTippedLabel.qml
