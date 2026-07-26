@@ -451,7 +451,16 @@ class PptSendWorker(QObject):
         font.Bold = MSO_FALSE
         font.Italic = MSO_FALSE
         try:
-            text_range.ParagraphFormat.Alignment = alignment
+            para = text_range.ParagraphFormat
+            para.Alignment = alignment
+            # Deterministic against deck templates whose default text
+            # box carries a bulleted list style: label text is never
+            # bulleted, and the bullet's hanging indent must not shift
+            # the text off the zone geometry.
+            para.Bullet.Visible = MSO_FALSE
+            level = frame.Ruler.Levels(1)
+            level.FirstMargin = 0
+            level.LeftMargin = 0
             frame.AutoSize = PP_AUTOSIZE_NONE
             frame.WordWrap = MSO_FALSE
             # The box is grown by this same margin at creation, so the
