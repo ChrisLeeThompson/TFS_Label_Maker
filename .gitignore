@@ -12,6 +12,7 @@ CLAUDE.md
 
 # Local development
 tests/
+test_images/
 
 # App output
 labelled_images_*/

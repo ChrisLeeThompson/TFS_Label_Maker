@@ -1,4 +1,5 @@
 module Components
+BatchNavRow 1.0 BatchNavRow.qml
 Card 1.0 Card.qml
 ColorPicker 1.0 ColorPicker.qml
 CustomSpinBox 1.0 CustomSpinBox.qml

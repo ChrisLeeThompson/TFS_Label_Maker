@@ -44,7 +44,8 @@ QtObject {
 
     readonly property string dropZoneTooltip:
         "Drop TFS images here (.tif, .tiff, .png). " +
-        "Drop several at once to label a batch."
+        "Drop several at once to label a batch. " +
+        "Only images from SEMs and FIBs are supported."
 
     // Status bar
     readonly property string loadButtonText: "Load"
@@ -57,7 +58,7 @@ QtObject {
         "Remove every loaded image, emptying the metadata tree and the " +
         "label. Field selections are kept for this session and return " +
         "when a later batch shares them; use \"Deselect all\" to forget them."
-    readonly property string loadDialogTitle: "Select TFS images"
+    readonly property string loadDialogTitle: "Select TFS SEM-FIB images"
     readonly property string startButtonTooltip:
         "Generate the selected output for every loaded image."
     readonly property string stopButtonTooltip:
@@ -166,8 +167,40 @@ QtObject {
         "Double-click to edit. Drag out of the grid to remove."
     readonly property string treeEmptyText:
         "Load images to select metadata."
-    readonly property string treeNoSharedText:
-        "The loaded images share no metadata categories. Images saved " +
-        "in different formats carry different metadata — label them as " +
-        "separate batches."
+    readonly property string treeNoMetadataText:
+        "No readable metadata was found in the loaded images. The " +
+        "label can still carry custom text — double-click an empty " +
+        "cell in the preview."
+    readonly property string treeStoppedText:
+        "Parsing was stopped, so the tree shows nothing rather than " +
+        "a partial batch. Press Clear and load the images again to " +
+        "re-read them."
+    readonly property string treeBadgeTooltip:
+        "Present in %1 of %2 images. Images without this field follow " +
+        "the Missing metadata setting."
+
+    // Batch nav row (under the label preview plate).
+    readonly property string batchNavPreviousText: "Previous"
+    readonly property string batchNavNextText: "Next"
+    readonly property string batchNavPreviousTooltip:
+        "Show the previous image's metadata in the tree and the label " +
+        "preview. The label arrangement applies to the whole batch."
+    readonly property string batchNavNextTooltip:
+        "Show the next image's metadata in the tree and the label " +
+        "preview. The label arrangement applies to the whole batch."
+    readonly property string batchNavFileTooltip:
+        "The image whose values the tree and the label preview are " +
+        "showing. Pick another image to jump straight to it."
+    readonly property string batchNavPositionSeparator: " / "
+    readonly property string cellOmittedTooltip:
+        "This image has no value for this field, so its label will " +
+        "omit this cell. Images that have the field keep it."
+
+    // Missing metadata policy (Settings).
+    readonly property string missingFieldLabel: "Missing metadata"
+    readonly property string missingFieldTooltip:
+        "What a label shows when its image lacks a selected field. " +
+        "Omit drops the cell from that image's label; Show as — keeps " +
+        "the cell with a dash. Cells about to be omitted appear " +
+        "ghosted in the preview."
 }

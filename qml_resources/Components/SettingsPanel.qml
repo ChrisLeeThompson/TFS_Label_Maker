@@ -240,6 +240,17 @@ ScrollView {
             onToggled: root.settings.alignColumns = checked
         }
 
+        ToolTippedLabel {
+            text: Strings.missingFieldLabel
+            toolTipText: Strings.missingFieldTooltip
+        }
+        ComboBox {
+            Layout.preferredWidth: AppConfig.comboBoxWidth
+            model: root.settings.missingFieldPolicyNames
+            currentIndex: root.settings.missingFieldPolicy
+            onActivated: (index) => root.settings.missingFieldPolicy = index
+        }
+
         // --- Reset ----------------------------------------------------------
 
         Item { Layout.fillWidth: false; implicitWidth: 1; implicitHeight: 1 }

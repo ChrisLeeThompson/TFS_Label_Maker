@@ -46,6 +46,7 @@ class SettingsController(QObject):
     keyAlignmentChanged = Signal()
     valueAlignmentChanged = Signal()
     keySeparatorChanged = Signal()
+    missingFieldPolicyChanged = Signal()
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -154,6 +155,12 @@ class SettingsController(QObject):
             defaults.KEY_SEPARATOR_DEFAULT,
             0,
             len(defaults.SEPARATOR_NAMES) - 1,
+        )
+        self._missing_field_policy = as_int(
+            "missingFieldPolicy",
+            defaults.MISSING_FIELD_DEFAULT,
+            0,
+            len(defaults.MISSING_FIELD_NAMES) - 1,
         )
 
     def _store(self, name: str, value: object) -> None:
@@ -422,6 +429,19 @@ class SettingsController(QObject):
         self._store("keySeparator", value)
         self.keySeparatorChanged.emit()
 
+    @Property(int, notify=missingFieldPolicyChanged)
+    def missingFieldPolicy(self) -> int:
+        return self._missing_field_policy
+
+    @missingFieldPolicy.setter
+    def missingFieldPolicy(self, value: int) -> None:
+        value = max(0, min(len(defaults.MISSING_FIELD_NAMES) - 1, int(value)))
+        if value == self._missing_field_policy:
+            return
+        self._missing_field_policy = value
+        self._store("missingFieldPolicy", value)
+        self.missingFieldPolicyChanged.emit()
+
     # --- Derived, read-only ----------------------------------------------
 
     @Property(bool, notify=borderThicknessChanged)
@@ -464,6 +484,10 @@ class SettingsController(QObject):
     def separatorNames(self) -> list:
         return list(defaults.SEPARATOR_NAMES)
 
+    @Property(list, constant=True)
+    def missingFieldPolicyNames(self) -> list:
+        return list(defaults.MISSING_FIELD_NAMES)
+
     # --- Slots -----------------------------------------------------------
 
     @Slot()
@@ -486,6 +510,7 @@ class SettingsController(QObject):
         self.keyAlignment = defaults.KEY_ALIGNMENT_DEFAULT
         self.valueAlignment = defaults.VALUE_ALIGNMENT_DEFAULT
         self.keySeparator = defaults.KEY_SEPARATOR_DEFAULT
+        self.missingFieldPolicy = defaults.MISSING_FIELD_DEFAULT
         self.flush()
 
     # --- Snapshot for workers --------------------------------------------

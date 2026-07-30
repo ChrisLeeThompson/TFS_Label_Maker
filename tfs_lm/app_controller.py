@@ -202,11 +202,16 @@ class AppController(QObject):
             self.errorOccurred.emit(f"Could not create the run directory:\n{exc}")
             return
 
-        tasks, skipped = build_tasks(
+        tasks, skips = build_tasks(
             self._images, self._label, self._settings, run_dir
         )
         if not tasks:
             run_dir.rmdir()  # nothing will be written; leave no empty dirs
+            # Zero tasks can only mean nothing parsed: a checked field
+            # is by construction in the batch union, so at least one
+            # contributing image resolves it, and a custom cell tasks
+            # every parsed image — the all-skipped-by-policy case can
+            # never empty the task list (adversarially verified).
             self._set_status("Nothing to export — no image parsed successfully")
             return
 
@@ -221,7 +226,7 @@ class AppController(QObject):
             self._ppt_pending = True
 
         mode_name = defaults.OUTPUT_NAMES[self._settings.outputMode]
-        if not self._export.start_export(tasks, run_dir, skipped, mode_name):
+        if not self._export.start_export(tasks, run_dir, skips, mode_name):
             # Never expected (canStart requires an idle app), but a
             # queued send must not strand busy at True forever.
             self._ppt_pending = False

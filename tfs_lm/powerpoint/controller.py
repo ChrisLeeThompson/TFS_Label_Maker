@@ -10,7 +10,7 @@ from datetime import datetime
 from PySide6.QtCore import Property, QObject, QSettings, Signal
 
 from .. import defaults
-from ..export.controller import format_for_label
+from ..export.controller import resolve_cell
 from ..jobs.base import BackgroundJob
 from ..label.spec import CellSpec, CustomCellSpec, LabelSpec, PlacedCell
 from ..metadata import canonical
@@ -41,6 +41,7 @@ def build_ppt_items(images, label, settings, add_label_object: bool) -> list[Ppt
 
     placements = label.matrix.placed_cells()
     style = settings.label_style()
+    policy = settings.missingFieldPolicy
 
     items: list[tuple[bool, datetime, int, PptItem]] = []
     for order, source in enumerate(images.paths()):
@@ -49,18 +50,21 @@ def build_ppt_items(images, label, settings, add_label_object: bool) -> list[Ppt
             continue
 
         # This image's values for the arranged cells, formatted exactly
-        # as the label would show them. Custom cells are literal — the
-        # same text on every image, no per-image resolution.
-        valued = [
-            (
-                row,
-                column,
-                cell,
-                cell.text if isinstance(cell, CustomCellSpec)
-                else format_for_label(meta, cell.path),
-            )
-            for row, column, cell in placements
-        ]
+        # as the label would show them — including the missing-field
+        # policy: an absent path is dropped (Omit) or dashed (Dash) in
+        # the notes and the label object alike. Custom cells are
+        # literal — the same text on every image, no per-image
+        # resolution. Notes are the data-recovery channel: under Omit
+        # a fabricated dash for a field the image never had would be a
+        # lie, so the entry is simply not written.
+        valued = []
+        for row, column, cell in placements:
+            if isinstance(cell, CustomCellSpec):
+                valued.append((row, column, cell, cell.text))
+                continue
+            value = resolve_cell(meta, cell.path, policy)
+            if value is not None:
+                valued.append((row, column, cell, value))
 
         notes = source.name
         if valued:

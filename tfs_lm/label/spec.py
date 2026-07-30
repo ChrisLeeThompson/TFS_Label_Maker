@@ -65,6 +65,11 @@ class CellSpec:
     path: str          # canonical dotted path, the cell's stable identity
     key_text: str      # display name, e.g. "HV"
     value_text: str    # already formatted, e.g. "3.00 kV"
+    # PREVIEW-ONLY ghost state: the current image lacks this path AND
+    # the missing-field policy is Omit, so this image's label will drop
+    # the cell. Export builders never construct omitted cells — they
+    # filter or dash per policy, per image, at task-build time.
+    omitted: bool = False
 
 
 @dataclass(frozen=True, slots=True)

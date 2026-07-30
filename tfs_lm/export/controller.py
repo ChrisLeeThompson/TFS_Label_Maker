@@ -11,11 +11,16 @@ from PySide6.QtCore import Property, QObject, Signal
 from .. import defaults
 from ..jobs.base import BackgroundJob
 from ..label.spec import CellSpec, CustomCellSpec, LabelSpec, PlacedCell
-from ..metadata import canonical
+from ..metadata import canonical, formatting
 from . import report
 from .worker import ExportResults, ExportTask, ExportWorker
 
 logger = logging.getLogger(__name__)
+
+# Reasons an image contributes no outputs at all; recorded verbatim in
+# export_report.json's "skipped" list and counted in the end summary.
+SKIP_NO_METADATA = "no metadata"
+SKIP_NO_FIELDS = "no selected field present"
 
 
 def format_for_label(meta, path: str) -> str:
@@ -29,24 +34,50 @@ def format_for_label(meta, path: str) -> str:
     return canonical.format_for_path(path, meta.get(path))
 
 
-def build_tasks(images, label, settings, run_dir: Path) -> tuple[list[ExportTask], int]:
+def resolve_cell(meta, path: str, policy: int) -> str | None:
+    """This image's label text for a checked path, or None to omit.
+
+    Presence is PATH membership in the image's metadata: a present-but-
+    empty value formats to the em dash under BOTH policies; only true
+    absence consults the missing-field policy. Deliberately raise-free
+    (dict membership plus the total formatter chain) — build_tasks and
+    build_ppt_items run unguarded on the GUI thread.
+    """
+
+    if path in meta.flat:
+        return format_for_label(meta, path)
+    if policy == defaults.MISSING_FIELD_DASH:
+        return formatting.EMPTY_DISPLAY
+    return None
+
+
+def build_tasks(
+    images, label, settings, run_dir: Path
+) -> tuple[list[ExportTask], list[tuple[Path, str]]]:
     """Per-image tasks from the current checked set and settings.
 
     Runs on the GUI thread, so it may read live models freely; the
-    worker gets only frozen snapshots. Returns (tasks, skipped) where
-    skipped counts images that never parsed and get no label.
+    worker gets only frozen snapshots. Returns (tasks, skips) where
+    skips is [(source, reason)] for images that get no outputs at all:
+    never parsed, or — under the Omit policy — no selected field
+    present and no custom cell. Such images write NOTHING, not even a
+    watermark copy: an unlabelled copy inside a labelled_images_* run
+    dir would misrepresent the run, so the report carries the reason
+    instead.
     """
 
     # The user's grid arrangement, shared by every image in the batch;
-    # only the VALUES differ per image.
+    # only the VALUES differ per image — and, under the Omit policy,
+    # which of the arranged cells this image's label actually carries.
     placements = label.matrix.placed_cells()
     style = settings.label_style()
+    policy = settings.missingFieldPolicy
     mode = settings.outputMode
     wants_svg = defaults.output_writes_svg(mode)
     wants_watermark = defaults.output_writes_watermark(mode)
 
     tasks: list[ExportTask] = []
-    skipped = 0
+    skips: list[tuple[Path, str]] = []
     # Discovery de-dupes by resolved path, so two different files with
     # the SAME NAME from different folders are a legal batch — their
     # outputs must not overwrite each other in the flat run dir.
@@ -64,25 +95,36 @@ def build_tasks(images, label, settings, run_dir: Path) -> tuple[list[ExportTask
     for source in images.paths():
         meta = images.metadata_for(source)
         if meta is None or meta.is_empty:
-            skipped += 1
+            skips.append((source, SKIP_NO_METADATA))
             continue
-        cells = tuple(
-            PlacedCell(
+        cells = []
+        for row, column, placed in placements:
+            if isinstance(placed, CustomCellSpec):
                 # A custom cell is literal, identical on every image —
                 # the shared frozen instance passes straight through.
-                # Metadata cells resolve THIS image's value.
-                cell=placed if isinstance(placed, CustomCellSpec) else CellSpec(
+                cells.append(PlacedCell(cell=placed, row=row, column=column))
+                continue
+            # Metadata cells resolve THIS image's value; an absent
+            # path omits the cell or dashes it, per the policy. The
+            # layout's rank-based trim then collapses any row/column
+            # the omissions emptied — for this image only.
+            value = resolve_cell(meta, placed.path, policy)
+            if value is None:
+                continue
+            cells.append(PlacedCell(
+                cell=CellSpec(
                     path=placed.path,
-                    key_text=placed.path.rsplit(".", 1)[-1],
-                    value_text=format_for_label(meta, placed.path),
+                    key_text=canonical.display_key(placed.path),
+                    value_text=value,
                 ),
                 row=row,
                 column=column,
-            )
-            for row, column, placed in placements
-        )
+            ))
+        if not cells:
+            skips.append((source, SKIP_NO_FIELDS))
+            continue
         spec = LabelSpec(
-            cells=cells,
+            cells=tuple(cells),
             style=style,
             image_width=meta.width,
             image_height=meta.height,
@@ -103,7 +145,7 @@ def build_tasks(images, label, settings, run_dir: Path) -> tuple[list[ExportTask
                 image_unique_id=getattr(meta, "image_unique_id", "") or "",
             )
         )
-    return tasks, skipped
+    return tasks, skips
 
 
 class ExportJob(BackgroundJob):
@@ -139,7 +181,7 @@ class ExportController(QObject):
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._job = ExportJob(self)
-        self._skipped = 0
+        self._skips: list[tuple[Path, str]] = []
         self._mode_name = ""
         self._report_written = True  # nothing pending before the first run
         self._job.statusUpdated.connect(self.statusUpdated)
@@ -159,10 +201,10 @@ class ExportController(QObject):
         self,
         tasks: list[ExportTask],
         run_dir: Path,
-        skipped: int,
+        skips: list[tuple[Path, str]],
         mode_name: str = "",
     ) -> bool:
-        self._skipped = skipped
+        self._skips = list(skips)
         self._mode_name = mode_name
         self._report_written = False
         started = self._job.export(tasks, run_dir)
@@ -191,8 +233,18 @@ class ExportController(QObject):
             return
         self._report_written = True
         report.write_report(
-            results.run_dir, self._mode_name, results.report_entries, stopped=True
+            results.run_dir,
+            self._mode_name,
+            results.report_entries,
+            stopped=True,
+            skipped=self._serialized_skips(),
         )
+
+    def _serialized_skips(self) -> list[dict[str, str]]:
+        return [
+            {"source": source.name, "reason": reason}
+            for source, reason in self._skips
+        ]
 
     def _on_job_finished(self, completed: bool) -> None:
         results = self._job.results
@@ -207,6 +259,7 @@ class ExportController(QObject):
                 self._mode_name,
                 results.report_entries,
                 stopped=not completed,
+                skipped=self._serialized_skips(),
             )
 
         if not completed:
@@ -217,7 +270,11 @@ class ExportController(QObject):
             ]
         if failed:
             parts.append(f"{failed} failed")
-        if self._skipped:
-            parts.append(f"{self._skipped} skipped (no metadata)")
+        no_meta = sum(1 for _, r in self._skips if r == SKIP_NO_METADATA)
+        no_fields = sum(1 for _, r in self._skips if r == SKIP_NO_FIELDS)
+        if no_meta:
+            parts.append(f"{no_meta} skipped (no metadata)")
+        if no_fields:
+            parts.append(f"{no_fields} skipped (no fields present)")
         self.statusUpdated.emit(" — ".join(parts))
         self.exportFinished.emit(completed)

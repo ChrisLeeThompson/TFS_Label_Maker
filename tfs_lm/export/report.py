@@ -24,15 +24,22 @@ def write_report(
     output_mode_name: str,
     entries: list[dict[str, Any]],
     stopped: bool,
+    skipped: list[dict[str, Any]] | None = None,
 ) -> Path | None:
     """Write the run summary. Failures are logged, never raised — a
-    report must not turn a successful export into a failed one."""
+    report must not turn a successful export into a failed one.
+
+    ``skipped`` lists images that produced no outputs at all, each
+    {"source", "reason"} — a separate top-level key so the per-image
+    "images" entry contract (and its consumers) stays untouched.
+    """
 
     payload = {
         "created": datetime.now().isoformat(timespec="seconds"),
         "output_mode": output_mode_name,
         "stopped": stopped,
         "images": entries,
+        "skipped": skipped or [],
     }
     target = run_dir / REPORT_NAME
     try:

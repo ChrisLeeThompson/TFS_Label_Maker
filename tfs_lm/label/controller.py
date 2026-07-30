@@ -6,6 +6,8 @@ import logging
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
+from .. import defaults
+from ..metadata import formatting
 from .matrix_model import LabelMatrixModel
 from .spec import CellSpec, CustomCellSpec
 
@@ -16,14 +18,16 @@ class LabelController(QObject):
     """Owns the slot-grid model and keeps it in step with the tree.
 
     Data flows one way: tree checks -> cells (on every checkedChanged,
-    including the rebuild after each parse); the grid shape follows the
-    labelRows/labelColumns settings, and the grid's FREE slot count
-    (slots minus custom text cells) is pushed into the tree as its
-    check capacity. Two flows go back the other way: drag reorder
-    pushes the grid's reading order into the tree's (session-only)
-    check order, and drag-out delete unchecks the dragged field.
-    Custom text cells live entirely on this side — the tree never
-    learns about them beyond the capacity they consume.
+    including the rebuild after each parse; also on currentImageChanged
+    — the cells show the CURRENT image's values — and on a
+    missing-field policy flip, which re-resolves the ghost state); the
+    grid shape follows the labelRows/labelColumns settings, and the
+    grid's FREE slot count (slots minus custom text cells) is pushed
+    into the tree as its check capacity. Two flows go back the other
+    way: drag reorder pushes the grid's reading order into the tree's
+    (session-only) check order, and drag-out delete unchecks the
+    dragged field. Custom text cells live entirely on this side — the
+    tree never learns about them beyond the capacity they consume.
     """
 
     gridChanged = Signal()
@@ -36,6 +40,12 @@ class LabelController(QObject):
         self._matrix = LabelMatrixModel(self)
 
         images.checkedFieldsChanged.connect(self._sync_cells)
+        # Cycling swaps which image's values the cells show; a policy
+        # flip re-resolves the ghost state. Parse completion fires both
+        # checkedFieldsChanged and currentImageChanged — the second
+        # sync is a no-op because the matrix diffs value-equal cells.
+        images.currentImageChanged.connect(self._sync_cells)
+        settings.missingFieldPolicyChanged.connect(self._sync_cells)
         settings.labelColumnsChanged.connect(self._apply_grid)
         settings.labelRowsChanged.connect(self._apply_grid)
         self._matrix.countChanged.connect(self.countChanged)
@@ -80,15 +90,31 @@ class LabelController(QObject):
         )
 
     def _sync_cells(self) -> None:
+        """Rebuild the metadata cells for the CURRENT image.
+
+        A path the current image lacks resolves per the missing-field
+        policy, here as in the output: Omit ghosts the cell (empty
+        value + omitted flag for the QML dim), Dash shows the em dash.
+        Present-but-blank values arrive from the tree already dashed —
+        only true absence goes through the policy.
+        """
+
         tree = self._images.fieldsModel
-        cells = [
-            CellSpec(
+        omit = (
+            self._settings.missingFieldPolicy == defaults.MISSING_FIELD_OMIT
+        )
+        cells = []
+        for path in tree.checked_paths():
+            absent = not tree.present_in_current(path)
+            cells.append(CellSpec(
                 path=path,
                 key_text=tree.display_key(path),
-                value_text=tree.display_value(path),
-            )
-            for path in tree.checked_paths()
-        ]
+                value_text=(
+                    formatting.EMPTY_DISPLAY if absent and not omit
+                    else tree.display_value(path)
+                ),
+                omitted=absent and omit,
+            ))
         self._matrix.sync_cells(cells)
 
     # --- Properties ------------------------------------------------------

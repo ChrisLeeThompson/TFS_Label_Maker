@@ -17,6 +17,9 @@ Rectangle {
     id: root
 
     property string title: ""
+    // Right-aligned companion in the title band (e.g. the Label
+    // Preview's "2 / 11" batch position). Hidden when empty.
+    property string headerText: ""
     default property alias contentData: contentArea.data
 
     color: AppConfig.containerBackground
@@ -36,13 +39,24 @@ Rectangle {
     }
 
     Label {
+        id: headerLabel
+        text: root.headerText
+        visible: root.headerText !== ""
+        font.pixelSize: AppConfig.pageBodyFontSize
+        color: AppConfig.textDisabledColor
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: AppConfig.pageMargin
+    }
+
+    Label {
         id: titleLabel
         text: root.title
         visible: root.title !== ""
         font.pixelSize: AppConfig.pageBodyFontSize
         font.bold: true
         anchors.left: parent.left
-        anchors.right: parent.right
+        anchors.right: headerLabel.visible ? headerLabel.left : parent.right
         anchors.top: parent.top
         anchors.margins: AppConfig.pageMargin
         elide: Text.ElideRight

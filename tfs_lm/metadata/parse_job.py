@@ -10,7 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, Slot
 
 from ..jobs.base import BackgroundJob
-from .common_fields import IntersectionAccumulator
+from .common_fields import UnionAccumulator
 from .reader import read_metadata
 from .records import ImageMetadata
 
@@ -28,13 +28,13 @@ class ParseResults:
 
     metadata: dict[Path, ImageMetadata] = field(default_factory=dict)
     failures: list[tuple[Path, str]] = field(default_factory=list)
-    accumulator: IntersectionAccumulator = field(default_factory=IntersectionAccumulator)
+    accumulator: UnionAccumulator = field(default_factory=UnionAccumulator)
     parsed_count: int = 0
 
     def clear(self) -> None:
         self.metadata.clear()
         self.failures.clear()
-        self.accumulator = IntersectionAccumulator()
+        self.accumulator = UnionAccumulator()
         self.parsed_count = 0
 
 
@@ -94,7 +94,8 @@ class _ParseWorker(QObject):
 
 
 class ParseJob(BackgroundJob):
-    """Reads metadata for the loaded images and intersects their fields."""
+    """Reads metadata for the loaded images and accumulates the union
+    of their fields."""
 
     fileParsed = Signal(str, bool, str)
     # Distinct from the base class's jobFinished, which fires for every

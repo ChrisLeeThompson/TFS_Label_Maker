@@ -235,6 +235,15 @@ def field_for_path(path: str) -> CanonicalField | None:
     return _FIELD_BY_PATH.get(path)
 
 
+def display_key(path: str) -> str:
+    """The key text a label (and the tree) shows for a dotted path —
+    the leaf segment, never CanonicalField.label. One definition so
+    the tree, the export builder and the PowerPoint sender can never
+    render the same path under different keys."""
+
+    return path.rsplit(".", 1)[-1]
+
+
 def format_for_path(path: str, value: Any) -> str:
     """One value formatted for display, canonical-aware.
 

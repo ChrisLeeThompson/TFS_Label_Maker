@@ -33,6 +33,7 @@ _KEY_ROLE = Qt.ItemDataRole.UserRole + 2
 _VALUE_ROLE = Qt.ItemDataRole.UserRole + 3
 _OCCUPIED_ROLE = Qt.ItemDataRole.UserRole + 4
 _CUSTOM_ROLE = Qt.ItemDataRole.UserRole + 5
+_OMITTED_ROLE = Qt.ItemDataRole.UserRole + 6
 
 
 class LabelMatrixModel(QAbstractListModel):
@@ -246,6 +247,7 @@ class LabelMatrixModel(QAbstractListModel):
             int(_VALUE_ROLE): b"valueText",
             int(_OCCUPIED_ROLE): b"occupied",
             int(_CUSTOM_ROLE): b"custom",
+            int(_OMITTED_ROLE): b"omitted",
         }
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
@@ -261,6 +263,10 @@ class LabelMatrixModel(QAbstractListModel):
             return cell is not None
         if role == _CUSTOM_ROLE:
             return isinstance(cell, CustomCellSpec)
+        if role == _OMITTED_ROLE:
+            # Custom cells and holes are never omitted; the flag is the
+            # policy-resolved ghost state the controller bakes in.
+            return isinstance(cell, CellSpec) and cell.omitted
         if cell is None:
             return "" if role in (_PATH_ROLE, _KEY_ROLE, _VALUE_ROLE) else None
         if isinstance(cell, CustomCellSpec):

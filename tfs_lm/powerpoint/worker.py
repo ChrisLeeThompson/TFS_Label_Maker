@@ -53,6 +53,18 @@ PP_ALIGN_LEFT = 1
 PP_ALIGN_CENTER = 2
 PP_ALIGN_RIGHT = 3
 PP_AUTOSIZE_NONE = 0
+# PpPlaceholderType values that mean "a content area a picture may
+# fill": Content (Object), Bitmap and Picture placeholders. Titles,
+# bodies, footers and dates keep their jobs.
+PP_PLACEHOLDER_OBJECT = 7
+PP_PLACEHOLDER_BITMAP = 9
+PP_PLACEHOLDER_PICTURE = 18
+CONTENT_PLACEHOLDER_TYPES = frozenset({
+    PP_PLACEHOLDER_OBJECT, PP_PLACEHOLDER_BITMAP, PP_PLACEHOLDER_PICTURE,
+})
+# MsoShapeType: the shape AddPicture2 returns when an empty content
+# placeholder ABSORBED the insert (the shape IS the placeholder).
+MSO_SHAPE_TYPE_PLACEHOLDER = 14
 # Where images start, after a title slide — the reference's convention.
 FIRST_CONTENT_POSITION = 2
 
@@ -298,8 +310,64 @@ class PptSendWorker(QObject):
             self._set_notes(slide, item.notes)
 
     @staticmethod
-    def _place_picture(presentation, slide, source: Path):
-        """Insert at native size, then fit within the slide, centred."""
+    def _content_placeholder(slide):
+        """The layout's content area for the picture, or None.
+
+        Dragging an image onto a template slide by hand fits it to the
+        content placeholder's frame; the send must land in the same
+        frame or the deck reads mis-sized next to hand-placed slides.
+        Only image-friendly placeholder types count; the largest wins
+        when a layout offers several. A blank generic slide simply has
+        none — the caller then falls back to fitting the whole slide.
+        """
+
+        best, best_area = None, 0.0
+        try:
+            placeholders = slide.Shapes.Placeholders
+            for index in range(1, int(placeholders.Count) + 1):
+                shape = placeholders(index)
+                kind = int(shape.PlaceholderFormat.Type)
+                if kind not in CONTENT_PLACEHOLDER_TYPES:
+                    continue
+                area = float(shape.Width) * float(shape.Height)
+                if area > best_area:
+                    best, best_area = shape, area
+        except Exception:  # noqa: BLE001 - odd templates must not kill the send
+            logger.debug("Could not probe placeholders", exc_info=True)
+        return best
+
+    def _place_picture(self, presentation, slide, source: Path):
+        """Insert the picture the way a manual insert lands.
+
+        The content placeholder is NEVER deleted (explicit user
+        decision: the content object must survive, so deleting the
+        image later restores the empty content area). Three paths:
+
+        * The empty content placeholder ABSORBS AddPicture2 — the
+          returned Shape IS the placeholder — and PowerPoint applies
+          the placeholder's own fit, exactly like a manual insert.
+          Hands off: touching the geometry afterwards would fight the
+          placeholder's semantics (and a delete here destroyed the
+          picture outright — "Shape.Left : Object does not exist").
+        * No absorption but the layout HAS a content area: contain-fit
+          the free-floating picture to the placeholder's frame.
+        * No content area at all (blank generic slides, title-only
+          layouts): fit PPT_IMAGE_FIT of the slide, centred.
+        """
+
+        frame = None
+        placeholder = self._content_placeholder(slide)
+        if placeholder is not None:
+            try:
+                # The placeholder IS the designed frame — fill it edge
+                # to edge on the fitting axis, no extra margin.
+                frame = (
+                    float(placeholder.Left), float(placeholder.Top),
+                    float(placeholder.Width), float(placeholder.Height),
+                )
+            except Exception:  # noqa: BLE001 - odd template; fit the slide
+                logger.debug("Could not read the placeholder frame",
+                             exc_info=True)
 
         picture = slide.Shapes.AddPicture2(
             str(source.resolve()),
@@ -309,19 +377,30 @@ class PptSendWorker(QObject):
             MSO_FALSE,   # Compress
         )
         try:
+            if int(picture.Type) == MSO_SHAPE_TYPE_PLACEHOLDER:
+                return picture  # absorbed: native placement stands
+        except Exception:  # noqa: BLE001 - treat as a free shape
+            logger.debug("Could not read the picture's shape type",
+                         exc_info=True)
+        try:
             picture.LockAspectRatio = MSO_TRUE
-            slide_w = float(presentation.PageSetup.SlideWidth)
-            slide_h = float(presentation.PageSetup.SlideHeight)
+            if frame is not None:
+                frame_left, frame_top, frame_w, frame_h = frame
+            else:
+                slide_w = float(presentation.PageSetup.SlideWidth)
+                slide_h = float(presentation.PageSetup.SlideHeight)
+                frame_w = slide_w * defaults.PPT_IMAGE_FIT
+                frame_h = slide_h * defaults.PPT_IMAGE_FIT
+                frame_left = (slide_w - frame_w) / 2
+                frame_top = (slide_h - frame_h) / 2
             width = float(picture.Width)
             height = float(picture.Height)
-            if width > 0 and height > 0:
-                scale = min(
-                    slide_w * defaults.PPT_IMAGE_FIT / width,
-                    slide_h * defaults.PPT_IMAGE_FIT / height,
-                )
+            if width > 0 and height > 0 and frame_w > 0 and frame_h > 0:
+                scale = min(frame_w / width, frame_h / height)
+                # LockAspectRatio scales Height in step with Width.
                 picture.Width = width * scale
-                picture.Left = (slide_w - float(picture.Width)) / 2
-                picture.Top = (slide_h - float(picture.Height)) / 2
+                picture.Left = frame_left + (frame_w - float(picture.Width)) / 2
+                picture.Top = frame_top + (frame_h - float(picture.Height)) / 2
         except Exception:  # noqa: BLE001 - an unfitted picture beats none
             logger.exception("Could not fit the picture to the slide")
         return picture

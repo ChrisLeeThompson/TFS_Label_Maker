@@ -1,8 +1,16 @@
-"""Checkable tree of the metadata fields common to the loaded batch.
+"""Checkable tree of every metadata field found anywhere in the batch.
 
 Two classes: MetadataTreeModel holds the FieldNode hierarchy and the
 check state that feeds the label matrix; MetadataFilterProxy sits
 between it and the QML TreeView to implement search.
+
+The tree is the batch's UNION and is structurally stable while the
+user cycles the current image: Previous/Next never rebuild the tree,
+they only swap which image's values the value column shows (fields the
+current image lacks render dimmed with an empty value). Partial fields
+— present in some contributing images but not all — carry an "n/m"
+presence badge; presence is the only cross-image fact shown, so the
+tree stays a selector, not a comparator.
 
 Check state is mutated by dotted path string, never by QModelIndex from
 QML — paths are the identity currency shared with the accumulator and
@@ -46,11 +54,14 @@ from .records import FieldNode
 logger = logging.getLogger(__name__)
 
 # Fixed presentation order of the dialect groups. There is no
-# synthesized cross-dialect group and no per-field "varies" badge any
-# more — the tree is a selector, not a comparator, so it shows exactly
-# the raw categories the files share, under the names the ASV Project
+# synthesized cross-dialect group and no per-field "varies" badge —
+# the tree is a selector, not a comparator, so it shows exactly the
+# raw categories found in the batch, under the names the ASV Project
 # Explorer uses for the same data (display-only: the dotted paths keep
-# their Microscope./XML. prefixes, so persisted checks survive).
+# their Microscope./XML. prefixes, so remembered checks survive).
+# Partial fields stay inline in these natural groups; a synthesized
+# "Partial." prefix would break canonical's unit/kind lookup, which is
+# keyed on the real prefixes.
 _GROUP_ORDER = {"Microscope": 0, "XML": 1}
 _GROUP_TITLES = canonical.GROUP_DISPLAY_TITLES
 
@@ -58,6 +69,9 @@ _VALUE_ROLE = Qt.ItemDataRole.UserRole + 1
 _PATH_ROLE = Qt.ItemDataRole.UserRole + 2
 _CHECKED_ROLE = Qt.ItemDataRole.UserRole + 3
 _IS_LEAF_ROLE = Qt.ItemDataRole.UserRole + 4
+_PRESENCE_COUNT_ROLE = Qt.ItemDataRole.UserRole + 5
+_PRESENCE_TOTAL_ROLE = Qt.ItemDataRole.UserRole + 6
+_PRESENT_IN_CURRENT_ROLE = Qt.ItemDataRole.UserRole + 7
 
 
 def _display_for(path: str, value) -> str:
@@ -109,7 +123,13 @@ def build_tree(paths: set[str]) -> tuple[FieldNode, dict[str, FieldNode]]:
 
 
 class MetadataTreeModel(QAbstractItemModel):
-    """The batch's common fields, one checkable row per value.
+    """The batch's union of fields, one checkable row per value.
+
+    The value column is a VIEWPORT onto one image — the current image
+    the user has cycled to — never an aggregate. ``set_current_image``
+    swaps that viewport without touching the tree structure or the
+    check state, so cycling can never reshuffle grid slots or collapse
+    the TreeView's expansion state.
 
     The model owns strong references to every FieldNode (via _root and
     _by_path). That is not housekeeping: PySide will not keep a Python
@@ -127,6 +147,12 @@ class MetadataTreeModel(QAbstractItemModel):
         self._by_path: dict[str, FieldNode] = {}
         self._display: dict[str, str] = {}
         self._field_count = 0
+        # Presence: path -> contributing images carrying it (the badge's
+        # "n"), the contributor total (the "m"), and which known paths
+        # the CURRENT image has (drives dimming while cycling).
+        self._presence: dict[str, int] = {}
+        self._contributors = 0
+        self._present: set[str] = set()
         # Session intent — what the user has chosen, in pick order.
         # Mutated ONLY by explicit user action (setChecked/clearChecks/
         # set_capacity shrink/reorder), never by populate. Durable within
@@ -143,24 +169,78 @@ class MetadataTreeModel(QAbstractItemModel):
 
     # --- Population ------------------------------------------------------
 
-    def populate(self, common_paths, values) -> None:
-        """Rebuild from a finished parse. Batch, never incremental — the
-        intersection shrinks monotonically, so an incrementally grown
-        tree could show a field that a later file then removes."""
+    def populate(self, paths, values, presence=None, contributors=0) -> None:
+        """Rebuild from a finished parse. Batch, never incremental — a
+        removed file can shrink the union, so an incrementally grown
+        tree could keep a field no remaining image carries.
+
+        ``values`` is the CURRENT IMAGE's flat dict (any values dict
+        works — paths it lacks simply show empty and dim). ``presence``
+        maps path -> contributing-image count for the "n/m" badges;
+        None means fully present (the single-image and unit-test case).
+        """
 
         self.beginResetModel()
-        self._root, self._by_path = build_tree(set(common_paths))
-        self._display = {
-            path: _display_for(path, values[path])
-            for path in common_paths
-            if path in values
-        }
+        path_set = set(paths)
+        self._root, self._by_path = build_tree(path_set)
+        if presence is None:
+            self._contributors = contributors or 1
+            self._presence = {path: self._contributors for path in path_set}
+        else:
+            self._contributors = int(contributors)
+            self._presence = dict(presence)
+        self._rebuild_display(values)
         self._field_count = sum(1 for n in self._root.walk() if n.is_leaf)
         self._project_checks()
         self.endResetModel()
         # Always re-announce: the projected set differs per batch even
         # when nothing was toggled, and canStart listens to this.
         self.checkedChanged.emit()
+
+    def _rebuild_display(self, values) -> None:
+        """Format the current image's values for the known paths.
+
+        A known path absent from ``values`` gets NO display entry — it
+        renders as an empty value and dims. The em dash stays reserved
+        for present-but-empty values, mirroring the export policy's
+        distinction between "field missing" and "field blank".
+        """
+
+        known = self._by_path
+        self._display = {
+            path: _display_for(path, value)
+            for path, value in values.items()
+            if path in known
+        }
+        self._present = set(self._display)
+
+    def set_current_image(self, values) -> None:
+        """Swap which image's values the value column shows.
+
+        Touches neither the tree structure nor the check intent — NO
+        model reset, so the TreeView's expansion state and the grid's
+        slot assignments survive cycling. Announces only the two roles
+        that actually changed, one ranged dataChanged per parent node
+        (dataChanged cannot span parents in a tree model).
+        """
+
+        self._rebuild_display(values)
+        self._emit_subtree_changed(
+            [_VALUE_ROLE, _PRESENT_IN_CURRENT_ROLE]
+        )
+
+    def _emit_subtree_changed(self, roles: list[int]) -> None:
+        def visit(parent: FieldNode) -> None:
+            children = parent.children
+            if not children:
+                return
+            first = self.createIndex(0, 0, children[0])
+            last = self.createIndex(len(children) - 1, 0, children[-1])
+            self.dataChanged.emit(first, last, roles)
+            for child in children:
+                visit(child)
+
+        visit(self._root)
 
     def clear_fields(self) -> None:
         # Empties the tree AND the projection, but NOT _desired — the
@@ -292,14 +372,24 @@ class MetadataTreeModel(QAbstractItemModel):
         self._checked_set = set(self._checked)
 
     def display_value(self, path: str) -> str:
-        """The formatted value the tree shows — the matrix cell shows
-        the same string, so the two surfaces can never disagree."""
+        """The formatted value the tree shows for the CURRENT image —
+        the matrix cell shows the same string, so the two surfaces can
+        never disagree about the image being previewed. Empty when the
+        current image lacks the path."""
 
         return self._display.get(path, "")
 
+    def present_in_current(self, path: str) -> bool:
+        """Whether the current image carries this path at all —
+        present-but-empty counts as present (it has an em dash to
+        show); only true absence dims and, under the omit policy,
+        ghosts the grid cell."""
+
+        return path in self._present
+
     @staticmethod
     def display_key(path: str) -> str:
-        return path.rsplit(".", 1)[-1]
+        return canonical.display_key(path)
 
     # --- Python-side queries ---------------------------------------------
 
@@ -319,6 +409,9 @@ class MetadataTreeModel(QAbstractItemModel):
             int(_PATH_ROLE): b"path",
             int(_CHECKED_ROLE): b"checked",
             int(_IS_LEAF_ROLE): b"isLeaf",
+            int(_PRESENCE_COUNT_ROLE): b"presenceCount",
+            int(_PRESENCE_TOTAL_ROLE): b"presenceTotal",
+            int(_PRESENT_IN_CURRENT_ROLE): b"presentInCurrent",
         }
 
     def index(self, row: int, column: int, parent: QModelIndex = QModelIndex()) -> QModelIndex:
@@ -362,6 +455,13 @@ class MetadataTreeModel(QAbstractItemModel):
             return node.path in self._checked_set
         if role == _IS_LEAF_ROLE:
             return node.is_leaf
+        if role == _PRESENCE_COUNT_ROLE:
+            return self._presence.get(node.path, 0) if node.is_leaf else 0
+        if role == _PRESENCE_TOTAL_ROLE:
+            return self._contributors
+        if role == _PRESENT_IN_CURRENT_ROLE:
+            # Pure branches never dim; value-bearing rows dim on absence.
+            return node.path in self._present if node.is_leaf else True
         return None
 
     def _notify_row(self, node: FieldNode) -> None:

@@ -103,6 +103,21 @@ SEPARATOR_SUFFIXES: tuple[str, ...] = ("", ":", " -")
 
 KEY_SEPARATOR_DEFAULT = 0  # None — the zone gap already separates
 
+# --- Missing-field policy ------------------------------------------------
+# What a label shows when its image lacks a CHECKED field entirely (the
+# path is absent from that image's metadata — e.g. an ICD image and the
+# TLD-only SuctionTube). Omit drops the cell from that image's label
+# (an emptied row/column collapses); Dash keeps the cell as "Key: —".
+# Keys on PATH ABSENCE, never on formatted emptiness: a present-but-blank
+# value renders its em dash under both policies. Index-paired with the
+# combobox, same contract as SEPARATOR_NAMES.
+MISSING_FIELD_OMIT = 0
+MISSING_FIELD_DASH = 1
+
+MISSING_FIELD_NAMES: tuple[str, ...] = ("Omit from label", "Show as —")
+
+MISSING_FIELD_DEFAULT = MISSING_FIELD_OMIT
+
 # --- Label geometry ------------------------------------------------------
 LABEL_MARGIN_DEFAULT = 16
 LABEL_MARGIN_MIN = 0

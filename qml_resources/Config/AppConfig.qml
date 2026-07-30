@@ -17,7 +17,7 @@ QtObject {
 
     // Main window
     readonly property int mainWindowWidth: 910
-    readonly property int mainWindowHeight: 970
+    readonly property int mainWindowHeight: 1040
     readonly property int mainWindowMinimumWidth: 700
     readonly property int mainWindowMinimumHeight: 700
 
@@ -58,7 +58,7 @@ QtObject {
     readonly property int formColumnSpacing: 16
 
     // Row heights.
-    readonly property int topRowHeight: 300
+    readonly property int topRowHeight: 400
     readonly property int topRowMinimumHeight: 240
     readonly property int topRowMaximumHeight: 480
     readonly property int labelPreviewMinimumHeight: 140
@@ -89,6 +89,12 @@ QtObject {
     // The editor has no image to scale against, so the cell font is
     // capped rather than scaled; the output renders the real size.
     readonly property int labelPreviewFontSizeCap: 24
+    // Gap between the plate's fixed frame and the batch nav row.
+    readonly property int labelPreviewNavSpacing: 8
+    // Ghosted metadata texts on cells the current image's label will
+    // omit. Distinct from the drag dims (0.7 / 0.35) so the three
+    // states stay tellable apart.
+    readonly property real labelPreviewCellOmittedOpacity: 0.45
 
     // Metadata tree. The key/value divider sits at half the row width,
     // matching the reference Project Explorers' half-viewport divider.
@@ -101,6 +107,10 @@ QtObject {
     readonly property real treeKeyColumnRatioMax: 0.85
     readonly property int treeDividerHitWidth: 10
     readonly property int treeCellSpacing: 8
+    // The "n/m" presence badge on partial fields.
+    readonly property int treeBadgeFontSize: 12
+    readonly property int treeBadgeHeight: 16
+    readonly property int treeBadgeHPadding: 6
 
     // Colour picker
     readonly property int colorSwatchSize: 32

@@ -259,7 +259,12 @@ Item {
                         elide: Text.ElideRight
                         font.pixelSize: AppConfig.pageBodyFontSize
                         font.bold: delegateRoot.isGroupRow
-                        color: AppConfig.universalForeground
+                        // Dimmed when the CURRENT image lacks this
+                        // field. Strict === false (the file's defensive
+                        // style): branches and undefined never dim.
+                        color: delegateRoot.model.presentInCurrent === false
+                               ? AppConfig.textDisabledColor
+                               : AppConfig.universalForeground
                     }
 
                     Label {
@@ -269,12 +274,54 @@ Item {
                         // separator line never touches either text.
                         x: delegateRoot.dividerX + AppConfig.treeCellSpacing
                         width: Math.max(0, delegateRoot.width
-                                           - AppConfig.treeCellSpacing - x)
+                                           - AppConfig.treeCellSpacing - x
+                                           - (presenceBadge.visible
+                                              ? presenceBadge.width
+                                                + AppConfig.treeCellSpacing
+                                              : 0))
                         anchors.verticalCenter: parent.verticalCenter
                         text: delegateRoot.model.value
                         elide: Text.ElideRight
                         font.pixelSize: AppConfig.pageBodyFontSize
-                        color: AppConfig.universalForeground
+                        color: delegateRoot.model.presentInCurrent === false
+                               ? AppConfig.textDisabledColor
+                               : AppConfig.universalForeground
+                    }
+
+                    // "n/m" presence badge: this field exists in n of
+                    // the m contributing images. Availability only —
+                    // never a value comparison — and never a factor in
+                    // checkability (the arrangement is batch-wide).
+                    Rectangle {
+                        id: presenceBadge
+                        visible: delegateRoot.model.isLeaf === true
+                                 && delegateRoot.model.presenceCount
+                                    < delegateRoot.model.presenceTotal
+                        anchors.right: parent.right
+                        anchors.rightMargin: AppConfig.treeCellSpacing
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: badgeText.implicitWidth
+                               + 2 * AppConfig.treeBadgeHPadding
+                        height: AppConfig.treeBadgeHeight
+                        radius: height / 2
+                        color: AppConfig.containerIdleBorder
+
+                        Label {
+                            id: badgeText
+                            anchors.centerIn: parent
+                            text: delegateRoot.model.presenceCount + "/"
+                                  + delegateRoot.model.presenceTotal
+                            font.pixelSize: AppConfig.treeBadgeFontSize
+                            color: AppConfig.textDisabledColor
+                        }
+
+                        HoverHandler { id: badgeHover }
+                        ToolTip.text: Strings.treeBadgeTooltip
+                                      .arg(delegateRoot.model.presenceCount)
+                                      .arg(delegateRoot.model.presenceTotal)
+                        ToolTip.visible: badgeHover.hovered
+                        ToolTip.delay: AppConfig.toolTipDelayMs
+                        ToolTip.timeout: AppConfig.toolTipTimeoutMs
                     }
                 }
             }

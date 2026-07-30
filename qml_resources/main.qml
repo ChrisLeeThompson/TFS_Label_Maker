@@ -83,12 +83,16 @@ ApplicationWindow {
 
         // --- Row 1: settings + drop zone ---------------------------------
         //
-        // Bounded above so that once every settings row is revealed the
-        // row stops growing and hands the remaining height to the tree.
+        // Fixed at its preferred height: window stretch belongs to the
+        // metadata tree (row 3), the only genuinely unbounded content —
+        // the settings card scrolls, so growing this row only moves its
+        // cut-off point around (explicit user decision: the tree was
+        // the cramped one). The maximum stays as a safety cap should
+        // the preferred height ever misbehave.
         RowLayout {
             id: topRow
             Layout.fillWidth: true
-            Layout.fillHeight: true
+            Layout.fillHeight: false
             // Content-aware: the right column is fixed-height content
             // (catbug floor + Output card) that cannot scroll, so the
             // row must prefer at least that much or the cards overflow
@@ -180,14 +184,24 @@ ApplicationWindow {
 
         // --- Row 2: label preview ----------------------------------------
         //
-        // Content-sized for real: the card grows with the matrix (the
-        // 4-row cap bounds it), because a fixed height plus the Card's
-        // clip cut the outer rows off AND stopped their DropAreas from
-        // receiving drag hover — clipped rows silently could not be
-        // reorder targets.
+        // Fixed-height frame: LabelPreview sizes itself for the LARGEST
+        // grid (4 rows) plus the reserved nav strip, so row/column
+        // changes never resize the window. Never a hard-coded height on
+        // the card — a fixed height plus the Card's clip once cut the
+        // outer rows off AND stopped their DropAreas from receiving
+        // drag hover; the preview's own safety valve grows this instead
+        // of clipping.
         Card {
             id: previewCard
             title: Strings.labelPreviewGroupTitle
+            // The batch position, in line with the title (mirrors the
+            // nav row's visibility rule).
+            headerText: appController.images.count > 1
+                        && !appController.images.isParsing
+                        ? (appController.images.currentImageIndex + 1)
+                          + Strings.batchNavPositionSeparator
+                          + appController.images.count
+                        : ""
             Layout.fillWidth: true
             Layout.fillHeight: false
             // Shared with the window-minimum math above so the floor
@@ -203,6 +217,7 @@ ApplicationWindow {
                 interactive: !appController.busy
                 label: appController.label
                 settings: appController.settings
+                images: appController.images
             }
         }
 
@@ -218,20 +233,24 @@ ApplicationWindow {
 
             MetadataTree {
                 anchors.fill: parent
-                visible: appController.images.commonFieldCount > 0
+                visible: appController.images.fieldCount > 0
                 fieldsModel: appController.images.fieldsModel
                 treeModel: appController.images.treeModel
             }
 
             Label {
                 anchors.centerIn: parent
-                visible: appController.images.commonFieldCount === 0
-                // Same empty tree, two different truths: nothing loaded
-                // yet (invite a drop) versus a loaded batch that shares
-                // nothing (explain, so it does not read as a failed drop).
+                visible: appController.images.fieldCount === 0
+                // Same empty tree, three different truths: nothing
+                // loaded yet (invite a drop), a parse the user stopped
+                // (the tree empties by design — say so, not "your
+                // images are unreadable"), or a loaded batch in which
+                // no image carried any readable metadata.
                 text: appController.images.count > 0
                       && !appController.images.isParsing
-                      ? Strings.treeNoSharedText
+                      ? (appController.images.lastParseStopped
+                         ? Strings.treeStoppedText
+                         : Strings.treeNoMetadataText)
                       : Strings.treeEmptyText
                 color: AppConfig.textDisabledColor
                 font.pixelSize: AppConfig.pageBodyFontSize

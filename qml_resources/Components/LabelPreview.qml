@@ -25,11 +25,26 @@ Item {
     // --- Public state ---
     required property var label     // LabelController: matrix, moveCell, removeCell, setCustomText
     required property var settings  // SettingsController: plate + font styling
+    required property var images    // ImageSetController: batch cycling
     property bool interactive: true
 
-    // The card sizes itself from this.
-    implicitHeight: plate.height
-    implicitWidth: plate.width
+    // The card sizes itself from this — a FIXED frame: the largest
+    // grid (4 rows) plus a permanently reserved nav strip, so changing
+    // Label rows/columns (or a batch loading) never resizes the card
+    // or the window. The plate grows and shrinks centred inside.
+    // Math.max is the safety valve: content that genuinely exceeds
+    // the frame grows the card rather than clipping, because clipped
+    // rows silently stop receiving drag hover (the regression a
+    // fixed-height card caused once already).
+    readonly property real _maxPlateHeight:
+        AppConfig.labelRowsMax * AppConfig.labelPreviewCellHeight
+        + (AppConfig.labelRowsMax - 1) * AppConfig.labelPreviewCellSpacing
+        + 2 * AppConfig.labelPreviewPlatePadding
+    readonly property real _navReserve:
+        navRow.implicitHeight + AppConfig.labelPreviewNavSpacing
+
+    implicitHeight: Math.max(_maxPlateHeight, plate.height) + _navReserve
+    implicitWidth: Math.max(plate.width, navRow.implicitWidth)
 
     readonly property var _hAlign: [Text.AlignLeft, Text.AlignHCenter,
                                     Text.AlignRight]
@@ -51,6 +66,10 @@ Item {
     Rectangle {
         id: plate
         anchors.centerIn: parent
+        // Centred in the space ABOVE the reserved nav strip. Layout
+        // only — plate stays a direct child of root, so _insidePlate's
+        // coordinate comparison is untouched.
+        anchors.verticalCenterOffset: -root._navReserve / 2
         width: cellGrid.implicitWidth + 2 * AppConfig.labelPreviewPlatePadding
         height: cellGrid.implicitHeight + 2 * AppConfig.labelPreviewPlatePadding
         radius: root.settings.cornerRadius
@@ -82,6 +101,7 @@ Item {
                 required property string valueText
                 required property bool occupied
                 required property bool custom
+                required property bool omitted
 
                 property bool editing: false
 
@@ -186,11 +206,29 @@ Item {
                         }
                     }
 
+                    // Ghosted state: this image's label will omit the
+                    // cell (field absent + Omit policy). The dim rides
+                    // the metadata TEXTS, never the chip opacity (that
+                    // line belongs to the drag gesture) — the slot, its
+                    // border and the drag stay fully live, because the
+                    // arrangement is batch-wide.
+                    HoverHandler {
+                        id: omittedHover
+                        enabled: slotRect.omitted
+                    }
+                    ToolTip.text: Strings.cellOmittedTooltip
+                    ToolTip.visible: omittedHover.hovered && !chip.dragging
+                    ToolTip.delay: AppConfig.toolTipDelayMs
+                    ToolTip.timeout: AppConfig.toolTipTimeoutMs
+
                     // Metadata cells: key and value halves, aligned per
                     // the settings, separator suffix included — the
                     // same text the output renders.
                     Text {
                         visible: !slotRect.custom
+                        opacity: slotRect.omitted
+                                 ? AppConfig.labelPreviewCellOmittedOpacity
+                                 : 1.0
                         anchors.left: parent.left
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
@@ -215,6 +253,9 @@ Item {
 
                     Text {
                         visible: !slotRect.custom
+                        opacity: slotRect.omitted
+                                 ? AppConfig.labelPreviewCellOmittedOpacity
+                                 : 1.0
                         anchors.right: parent.right
                         anchors.top: parent.top
                         anchors.bottom: parent.bottom
@@ -338,6 +379,25 @@ Item {
             }
         }
     }
+    }
+
+    // The batch cycler, pinned to the reserved strip at the card's
+    // bottom so it never chases the plate around as the grid resizes.
+    // A chip dropped on it deletes the cell — that is the normal
+    // outside-the-plate gesture, unchanged.
+    BatchNavRow {
+        id: navRow
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        visible: root.images.count > 1 && !root.images.isParsing
+        interactive: root.interactive
+        fileListModel: root.images.fileModel
+        currentIndex: root.images.currentImageIndex
+        count: root.images.count
+        onPreviousClicked: root.images.previousImage()
+        onNextClicked: root.images.nextImage()
+        onJumpRequested: (index) => root.images.setCurrentImage(index)
     }
 
 }
