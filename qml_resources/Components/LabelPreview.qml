@@ -6,10 +6,11 @@ import "../Config"
 // The label matrix as an Excel-like slot grid: rows x columns of fixed,
 // clearly-bounded cells (per the Label rows / Label columns settings),
 // each empty, holding one checked field, or holding user-typed custom
-// text. Checking fills the first empty cell; dragging moves a cell's
-// item to an empty cell or swaps it with the occupant; dropping OUTSIDE
-// the plate deletes the cell (uncheck / remove); double-clicking an
-// empty cell types a custom note that appears on every image's label.
+// text. Checking fills the first empty cell COLUMN-wise (down column 1,
+// then column 2); dragging moves a cell's item to an empty cell or
+// swaps it with the occupant; dropping OUTSIDE the plate deletes the
+// cell (uncheck / remove); double-clicking an empty cell types a
+// custom note that appears on every image's label.
 //
 // The grid is an OVERLAY on the label plate: the rectangle behind it
 // shows the label's real background colour, opacity, corner radius and

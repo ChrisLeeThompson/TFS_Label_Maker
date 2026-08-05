@@ -211,6 +211,11 @@ PPT_IMAGE_FIT = 0.92
 # zone geometry while remaining comfortable to edit.
 PPT_TEXT_MARGIN_PT = 2.0
 
+# Vertical anchor of the native label text boxes (MsoVerticalAnchor:
+# 1 = top, 3 = middle, 4 = bottom). Middle balances the grown margin
+# above and below the text. Config-only by design — no UI control.
+PPT_TEXT_VERTICAL_ANCHOR = 3
+
 # Status text the PowerPoint controller emits. Lives here, not in
 # Strings.qml — one source of truth for strings only Python sets.
 STATUS_PPT_CONNECTING = "Connecting to PowerPoint…"

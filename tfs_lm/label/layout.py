@@ -19,6 +19,7 @@ are device-independent (pinned by the renderer-parity test).
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 from PySide6.QtGui import QFont, QFontMetricsF
@@ -121,6 +122,28 @@ def _aligned_x(zone_x: float, zone_w: float, text_w: float, alignment: int) -> f
     return zone_x  # ALIGN_LEFT, and the safe fallback
 
 
+# One QFontMetricsF per (family, pixel size) PER THREAD. A batch shares
+# one style, so without this every slide/image of an export or PPT send
+# rebuilds identical metrics. Thread-local rather than module-global:
+# worker threads are fresh per job and the GUI thread previews
+# concurrently — per-thread caching gives the whole win with no
+# cross-thread sharing questions.
+_metrics_cache = threading.local()
+
+
+def _metrics_for(family: str, pixel_size: int) -> QFontMetricsF:
+    cache = getattr(_metrics_cache, "by_font", None)
+    if cache is None:
+        cache = _metrics_cache.by_font = {}
+    key = (family, pixel_size)
+    metrics = cache.get(key)
+    if metrics is None:
+        probe = QFont(family)
+        probe.setPixelSize(pixel_size)
+        metrics = cache[key] = QFontMetricsF(probe)
+    return metrics
+
+
 def build_layout(spec: LabelSpec) -> LabelLayout:
     """Measure the spec's placed cells and put the plate in its corner.
 
@@ -141,9 +164,7 @@ def build_layout(spec: LabelSpec) -> LabelLayout:
     scale = style.scale_for(spec.image_width)
 
     font_px = max(1, round(style.font_size * scale))
-    probe = QFont(style.font_family)
-    probe.setPixelSize(font_px)
-    metrics = QFontMetricsF(probe)
+    metrics = _metrics_for(style.font_family, font_px)
 
     padding = defaults.CELL_PADDING_PX * scale
     col_gap = defaults.COLUMN_GAP_PX * scale

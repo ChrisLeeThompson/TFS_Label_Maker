@@ -96,15 +96,30 @@ class LabelMatrixModel(QAbstractListModel):
 
     # --- Content sync ----------------------------------------------------
 
+    def _first_empty_slot(self) -> int | None:
+        """The next slot a new check fills: COLUMN-wise, down column 1
+        then down column 2 (explicit user preference — a two-column
+        label reads as two stacks, so it should fill that way too).
+        Holes refill at the first column-wise empty. Only the FILL
+        order is column-major; reading order everywhere else stays
+        row-major (grid geometry, eviction, grouping)."""
+
+        for column in range(self._columns):
+            for row in range(self._rows):
+                index = row * self._columns + column
+                if self._slots[index] is None:
+                    return index
+        return None
+
     def sync_cells(self, cells: list[CellSpec]) -> None:
         """Reconcile the metadata slots with the checked set.
 
         Surviving cells KEEP their slots (the user's arrangement is
         sacred), with texts refreshed in place — a new batch changes
         representative values without moving anything. Removed paths
-        vacate their slots; new paths fill the first empty slot in
-        check order. Custom cells are invisible here: never vacated,
-        never refreshed — that is their session persistence.
+        vacate their slots; new paths fill column-wise in check order
+        (_first_empty_slot). Custom cells are invisible here: never
+        vacated, never refreshed — that is their session persistence.
         """
 
         incoming = {cell.path: cell for cell in cells}
@@ -125,9 +140,8 @@ class LabelMatrixModel(QAbstractListModel):
 
         additions = [cell for cell in cells if cell.path in incoming]
         for cell in additions:
-            try:
-                empty = self._slots.index(None)
-            except ValueError:
+            empty = self._first_empty_slot()
+            if empty is None:
                 # Capacity is enforced upstream; reaching this means the
                 # tree and grid disagree — log loudly, drop quietly.
                 logger.warning("No free slot for %s", cell.path)

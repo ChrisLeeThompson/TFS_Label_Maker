@@ -116,6 +116,7 @@ ApplicationWindow {
 
                 SettingsPanel {
                     anchors.fill: parent
+                    interactive: !appController.busy
                     settings: appController.settings
                 }
             }
@@ -175,6 +176,7 @@ ApplicationWindow {
                     OutputPanel {
                         id: outputPanel
                         anchors.fill: parent
+                        interactive: !appController.busy
                         powerpoint: appController.powerpoint
                         settings: appController.settings
                     }

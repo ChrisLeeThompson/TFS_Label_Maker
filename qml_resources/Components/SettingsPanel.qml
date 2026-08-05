@@ -16,6 +16,13 @@ ScrollView {
     id: root
 
     required property var settings
+    // UX-only gate: exports and sends use frozen style snapshots, so
+    // a mid-run edit only restyles the live preview away from what
+    // the running job is writing — misleading, never unsafe. Gating
+    // the FORM (not the ScrollView) keeps mid-run scrolling and
+    // reading possible; hierarchical enabled composes with the
+    // hasBorder child bindings, which reassert on re-enable.
+    property bool interactive: true
 
     contentWidth: availableWidth
     clip: true
@@ -48,6 +55,8 @@ ScrollView {
         columns: 2
         rowSpacing: AppConfig.formRowSpacing
         columnSpacing: AppConfig.formColumnSpacing
+        enabled: root.interactive
+        opacity: root.interactive ? 1.0 : 0.5
 
         // --- Background ---------------------------------------------------
 

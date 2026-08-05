@@ -21,6 +21,12 @@ Item {
 
     required property var powerpoint
     required property var settings
+    // UX-only gate: every value here is FROZEN into snapshots at
+    // Start, so a mid-run edit could never touch the running job —
+    // it would silently apply to the next run, which is exactly the
+    // misleading feedback this gate prevents. No Python-side refusal
+    // exists or is wanted: the snapshots are the load-bearing guard.
+    property bool interactive: true
 
     implicitHeight: form.implicitHeight
 
@@ -50,6 +56,7 @@ Item {
 
             ComboBox {
                 Layout.preferredWidth: AppConfig.comboBoxWidth
+                enabled: root.interactive
                 model: root.settings.outputNames
                 currentIndex: root.settings.outputMode
                 onActivated: (index) => root.settings.outputMode = index
@@ -64,6 +71,7 @@ Item {
             CheckBox {
                 id: transitionCheck
                 text: Strings.pptTransitionLabel
+                enabled: root.interactive
                 checked: root.powerpoint.transitionSlideEnabled
                 onToggled: root.powerpoint.transitionSlideEnabled = checked
 
@@ -81,7 +89,8 @@ Item {
                 from: AppConfig.pptSlideIndexMin
                 to: AppConfig.pptSlideIndexMax
                 value: root.powerpoint.transitionSlideIndex
-                enabled: root.powerpoint.transitionSlideEnabled
+                enabled: root.interactive
+                         && root.powerpoint.transitionSlideEnabled
                 opacity: enabled ? 1.0 : 0.5
                 onValueModified: root.powerpoint.transitionSlideIndex = value
             }
@@ -105,6 +114,12 @@ Item {
                 from: AppConfig.pptSlideIndexMin
                 to: AppConfig.pptSlideIndexMax
                 value: root.powerpoint.imageSlideIndex
+                // This spin box was never disabled before, so unlike
+                // its transition sibling it needs the opacity idiom
+                // added along with the gate (CustomSpinBox does not
+                // dim itself).
+                enabled: root.interactive
+                opacity: enabled ? 1.0 : 0.5
                 onValueModified: root.powerpoint.imageSlideIndex = value
             }
         }
@@ -119,7 +134,8 @@ Item {
             // stored preference (it returns when the mode changes back).
             // Also disabled without Windows + pywin32; the tooltip says
             // why, and the controller refuses the value defensively too.
-            enabled: root.powerpoint.available && !root.settings.outputIsPptOnly
+            enabled: root.interactive && root.powerpoint.available
+                     && !root.settings.outputIsPptOnly
             checked: root.powerpoint.sendToActivePpt
                      || root.settings.outputIsPptOnly
             onToggled: {
@@ -150,7 +166,7 @@ Item {
             text: Strings.pptAddLabelObjectLabel
             // Enabled whenever a send will actually happen, however it
             // was requested — checkbox or PowerPoint Only mode.
-            enabled: root.powerpoint.available
+            enabled: root.interactive && root.powerpoint.available
                      && (root.powerpoint.sendToActivePpt
                          || root.settings.outputIsPptOnly)
             opacity: enabled ? 1.0 : 0.5

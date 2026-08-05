@@ -53,6 +53,7 @@ PP_ALIGN_LEFT = 1
 PP_ALIGN_CENTER = 2
 PP_ALIGN_RIGHT = 3
 PP_AUTOSIZE_NONE = 0
+PP_ALERTS_NONE = 2  # PpAlertLevel.ppAlertsNone
 # PpPlaceholderType values that mean "a content area a picture may
 # fill": Content (Object), Bitmap and Picture placeholders. Titles,
 # bodies, footers and dates keep their jobs.
@@ -74,6 +75,15 @@ _PP_ALIGNMENT = {
     defaults.ALIGN_CENTER: PP_ALIGN_CENTER,
     defaults.ALIGN_RIGHT: PP_ALIGN_RIGHT,
 }
+
+
+class _SendStopped(Exception):
+    """Stop landed inside a slide's label build.
+
+    Distinct from a per-image failure: the item is neither sent nor
+    failed, the partially built slide is removed (the deck holds whole
+    slides only), and the run unwinds to the normal stopped ending.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,19 +172,30 @@ class PptSendWorker(QObject):
         self._settings = settings
         self._results = results
         self._stop = stop_event
+        # Per-send memo: whether the image layout's notes page has the
+        # body placeholder. The layout is uniform for the whole batch
+        # (probed once), so one failure means every slide would fail —
+        # skip the 7-dot chain instead of raising per slide.
+        self._notes_supported: bool | None = None
+        # Per-send memo, like _notes_supported: whether Shape.Duplicate
+        # cloning works against this PowerPoint. One failure predicts
+        # the rest (same binding, same deck), so the send drops to
+        # scratch-building every box — styling fidelity is never lost,
+        # only the speed-up.
+        self._clone_supported: bool | None = None
 
     # --- Lifecycle -------------------------------------------------------
 
     @Slot()
     def run(self) -> None:
         completed = False
+        original_alerts = None  # read by the finally on every path
         if not PYWIN32_AVAILABLE:  # pragma: no cover - guarded upstream too
             self._results.error_reason = defaults.STATUS_PPT_UNAVAILABLE
             self.finished.emit(False)
             return
 
         import pythoncom
-        from win32com import client
 
         # The reference omits this. COM on a non-main thread needs its
         # own apartment or Dispatch fails (or worse, works by luck).
@@ -182,11 +203,21 @@ class PptSendWorker(QObject):
         try:
             self.statusUpdated.emit(defaults.STATUS_PPT_CONNECTING)
             self.progressUpdated.emit(-1, -1)
-            ppt = client.Dispatch("PowerPoint.Application")
+            ppt = self._create_application()
             presentation = self._active_presentation(ppt)
             if presentation is None:
                 self._results.error_reason = defaults.STATUS_PPT_NO_PRESENTATION
                 return
+
+            # A PowerPoint alert dialog would block the worker thread
+            # invisibly — nobody is watching for a modal mid-send.
+            # Suppressed for the send only; the finally restores it.
+            try:
+                original_alerts = ppt.DisplayAlerts
+                ppt.DisplayAlerts = PP_ALERTS_NONE
+            except Exception:  # noqa: BLE001 - insurance, never load-bearing
+                logger.debug("Could not suppress PowerPoint alerts",
+                             exc_info=True)
 
             image_layout, template_mode = resolve_image_layout(
                 presentation, self._settings.image_index
@@ -199,6 +230,9 @@ class PptSendWorker(QObject):
             if self._settings.transition_enabled:
                 position = self._add_transition(presentation, position)
 
+            # Two progress units per slide — picture, then label — so
+            # the bar moves INSIDE big labelled slides instead of
+            # freezing for the whole block.
             total = len(self._items)
             for index, item in enumerate(self._items):
                 if self._stop.is_set():
@@ -206,8 +240,13 @@ class PptSendWorker(QObject):
                 self.statusUpdated.emit(f"Sending {item.source.name}")
                 try:
                     self._add_image_slide(
-                        presentation, position, item, image_layout, template_mode
+                        presentation, position, item, image_layout,
+                        template_mode, progress=(index, total),
                     )
+                except _SendStopped:
+                    # Before the generic handler: not sent, not a
+                    # failure — the finally reports the stop.
+                    return
                 except Exception as exc:  # noqa: BLE001 - per-image isolation
                     logger.exception("PPT slide failed for %r", str(item.source))
                     self._results.failures.append((item.source, str(exc)))
@@ -217,18 +256,56 @@ class PptSendWorker(QObject):
                 else:
                     self._results.sent.append(item.source)
                     position += 1
-                self.progressUpdated.emit(index + 1, total)
+                self.progressUpdated.emit(2 * index + 2, 2 * total)
             completed = True
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             logger.exception("PowerPoint send failed")
             self._results.error_reason = str(exc)
         finally:
+            # Restore BEFORE the refs drop and the apartment closes;
+            # self-guarded so a closed PowerPoint cannot mask the real
+            # error (or the successful completion).
+            try:
+                if original_alerts is not None:
+                    ppt.DisplayAlerts = original_alerts
+            except Exception:  # noqa: BLE001 - best effort
+                logger.debug("Could not restore PowerPoint alerts",
+                             exc_info=True)
             presentation = None
             ppt = None
             pythoncom.CoUninitialize()
             self.finished.emit(completed and not self._stop.is_set())
 
     # --- Presentation helpers --------------------------------------------
+
+    @staticmethod
+    def _create_application():
+        """The PowerPoint Application object, early-bound when possible.
+
+        gencache.EnsureDispatch generates and caches makepy classes for
+        the PowerPoint type library: property accesses then carry
+        compiled DISPIDs instead of dynamic dispatch's per-object
+        type-info round trips — the wrap overhead was ~60% of a
+        labelled send's cross-process traffic. The very first call
+        generates the cache (multi-second, deliberately IN-SEND behind
+        the already-shown "Connecting…" status and indeterminate bar —
+        a startup warm-up would launch PowerPoint itself); every later
+        send hits the on-disk cache. Falls back to late binding on
+        read-only installs, frozen builds, or a corrupted cache.
+        """
+
+        try:
+            return win32_client.gencache.EnsureDispatch(
+                "PowerPoint.Application"
+            )
+        except Exception:  # noqa: BLE001 - never block the send on binding
+            logger.warning(
+                "Early binding unavailable; using dynamic dispatch. "
+                "(A corrupted makepy cache is reset by deleting the "
+                "win32com gen_py directory.)",
+                exc_info=True,
+            )
+            return win32_client.Dispatch("PowerPoint.Application")
 
     @staticmethod
     def _active_presentation(ppt):
@@ -258,12 +335,13 @@ class PptSendWorker(QObject):
     def _add_transition(self, presentation, position: int) -> int:
         """Insert the divider slide; returns the next insert position."""
 
-        target = min(position, self._slide_count(presentation) + 1)
+        slides = presentation.Slides
+        target = min(position, self._collection_count(slides) + 1)
         try:
             layout = presentation.Designs(1).SlideMaster.CustomLayouts(
                 self._settings.transition_index
             )
-            presentation.Slides.AddSlide(target, layout)
+            slides.AddSlide(target, layout)
         except Exception:  # noqa: BLE001 - independent of the image fallback
             logger.warning(
                 "Transition layout %d unavailable; generic divider",
@@ -272,22 +350,33 @@ class PptSendWorker(QObject):
             )
             self._results.transition_fallback = True
             try:
-                presentation.Slides.Add(target, PP_LAYOUT_BLANK)
+                slides.Add(target, PP_LAYOUT_BLANK)
             except Exception:  # noqa: BLE001 - a divider is optional
                 logger.exception("Could not add a transition slide")
                 return position
         return position + 1
 
+    @staticmethod
+    def _collection_count(slides) -> int:
+        try:
+            return int(slides.Count)
+        except Exception:  # noqa: BLE001
+            return 0
+
     # --- Slide building ---------------------------------------------------
 
     def _add_image_slide(
-        self, presentation, position: int, item: PptItem, image_layout, template_mode
+        self, presentation, position: int, item: PptItem, image_layout,
+        template_mode, progress: tuple[int, int] | None = None,
     ) -> None:
-        target = min(position, self._slide_count(presentation) + 1)
+        # One Slides fetch per slide; the Count clamp stays because the
+        # user can delete slides from the live deck mid-send.
+        slides = presentation.Slides
+        target = min(position, self._collection_count(slides) + 1)
         if template_mode:
-            slide = presentation.Slides.AddSlide(target, image_layout)
+            slide = slides.AddSlide(target, image_layout)
         else:
-            slide = presentation.Slides.Add(target, PP_LAYOUT_BLANK)
+            slide = slides.Add(target, PP_LAYOUT_BLANK)
 
         try:
             picture = self._place_picture(presentation, slide, item.source)
@@ -302,16 +391,30 @@ class PptSendWorker(QObject):
             raise
 
         if item.label_spec is not None and item.label_spec.cells:
+            if progress is not None:
+                index, total = progress
+                self.progressUpdated.emit(2 * index + 1, 2 * total)
+                self.statusUpdated.emit(f"Labelling {item.source.name}")
             try:
                 self._place_label(slide, picture, item.label_spec)
+            except _SendStopped:
+                # Stop landed mid-label: the deck holds whole slides
+                # only, so the partial one goes — picture and all —
+                # before the stop unwinds to run().
+                try:
+                    slide.Delete()
+                except Exception:  # noqa: BLE001 - best effort
+                    logger.exception("Could not remove the stopped slide")
+                raise
             except Exception:  # noqa: BLE001 - the image still landed
                 logger.exception("Could not build the label object")
         if item.notes:
             self._set_notes(slide, item.notes)
 
     @staticmethod
-    def _content_placeholder(slide):
-        """The layout's content area for the picture, or None.
+    def _content_placeholder(shapes):
+        """The layout's content area for the picture: (shape, frame)
+        or (None, None).
 
         Dragging an image onto a template slide by hand fits it to the
         content placeholder's frame; the send must land in the same
@@ -319,22 +422,31 @@ class PptSendWorker(QObject):
         Only image-friendly placeholder types count; the largest wins
         when a layout offers several. A blank generic slide simply has
         none — the caller then falls back to fitting the whole slide.
+
+        The frame (left, top, width, height) is captured during the
+        scan — the placeholder IS the designed frame, filled edge to
+        edge on the fitting axis — so the caller never re-reads the
+        rect over COM.
         """
 
-        best, best_area = None, 0.0
+        best, best_frame, best_area = None, None, 0.0
         try:
-            placeholders = slide.Shapes.Placeholders
+            placeholders = shapes.Placeholders
             for index in range(1, int(placeholders.Count) + 1):
                 shape = placeholders(index)
                 kind = int(shape.PlaceholderFormat.Type)
                 if kind not in CONTENT_PLACEHOLDER_TYPES:
                     continue
-                area = float(shape.Width) * float(shape.Height)
-                if area > best_area:
-                    best, best_area = shape, area
+                width = float(shape.Width)
+                height = float(shape.Height)
+                if width * height > best_area:
+                    best, best_area = shape, width * height
+                    best_frame = (
+                        float(shape.Left), float(shape.Top), width, height,
+                    )
         except Exception:  # noqa: BLE001 - odd templates must not kill the send
             logger.debug("Could not probe placeholders", exc_info=True)
-        return best
+        return best, best_frame
 
     def _place_picture(self, presentation, slide, source: Path):
         """Insert the picture the way a manual insert lands.
@@ -355,21 +467,10 @@ class PptSendWorker(QObject):
           layouts): fit PPT_IMAGE_FIT of the slide, centred.
         """
 
-        frame = None
-        placeholder = self._content_placeholder(slide)
-        if placeholder is not None:
-            try:
-                # The placeholder IS the designed frame — fill it edge
-                # to edge on the fitting axis, no extra margin.
-                frame = (
-                    float(placeholder.Left), float(placeholder.Top),
-                    float(placeholder.Width), float(placeholder.Height),
-                )
-            except Exception:  # noqa: BLE001 - odd template; fit the slide
-                logger.debug("Could not read the placeholder frame",
-                             exc_info=True)
+        shapes = slide.Shapes
+        _, frame = self._content_placeholder(shapes)
 
-        picture = slide.Shapes.AddPicture2(
+        picture = shapes.AddPicture2(
             str(source.resolve()),
             MSO_FALSE,   # LinkToFile
             MSO_TRUE,    # SaveWithDocument (embed)
@@ -387,8 +488,9 @@ class PptSendWorker(QObject):
             if frame is not None:
                 frame_left, frame_top, frame_w, frame_h = frame
             else:
-                slide_w = float(presentation.PageSetup.SlideWidth)
-                slide_h = float(presentation.PageSetup.SlideHeight)
+                page_setup = presentation.PageSetup
+                slide_w = float(page_setup.SlideWidth)
+                slide_h = float(page_setup.SlideHeight)
                 frame_w = slide_w * defaults.PPT_IMAGE_FIT
                 frame_h = slide_h * defaults.PPT_IMAGE_FIT
                 frame_left = (slide_w - frame_w) / 2
@@ -442,41 +544,61 @@ class PptSendWorker(QObject):
         font_points = max(1.0, layout.font_pixel_size * to_points)
 
         style = spec.style
-        plate = slide.Shapes.AddShape(
+        # One Shapes fetch feeds the plate, every text box and the
+        # group — under COM each re-fetch is a marshalled round trip
+        # plus a fresh dynamic-dispatch wrapper (was 4+2·cells per
+        # label; the fetch-count test pins the bound).
+        shapes = slide.Shapes
+        plate = shapes.AddShape(
             MSO_SHAPE_ROUNDED_RECTANGLE, left, top, width, height
         )
-        plate.Fill.ForeColor.RGB = _rgb(style.background_color)
-        plate.Fill.Transparency = max(
+        fill = plate.Fill
+        fill.ForeColor.RGB = _rgb(style.background_color)
+        fill.Transparency = max(
             0.0, min(1.0, 1.0 - style.background_opacity / 100.0)
         )
+        line = plate.Line
         if style.border_thickness > 0:
-            plate.Line.Visible = MSO_TRUE
-            plate.Line.ForeColor.RGB = _rgb(style.border_color)
-            plate.Line.Weight = max(0.25, layout.border_width * to_points)
+            line.Visible = MSO_TRUE
+            line.ForeColor.RGB = _rgb(style.border_color)
+            line.Weight = max(0.25, layout.border_width * to_points)
         else:
-            plate.Line.Visible = MSO_FALSE
+            line.Visible = MSO_FALSE
         try:
             # Adjustment 1 is corner roundness as a fraction of half the
             # short side (0 = square, 0.5 = fully rounded). The layout's
             # radius is in image pixels, so express it proportionally.
             short = max(1.0, min(layout.width, layout.height))
-            plate.Adjustments[1] = max(0.0, min(0.5, layout.radius / short))
-        except Exception:  # noqa: BLE001 - cosmetic only
-            logger.debug("Could not set the plate corner radius", exc_info=True)
+            roundness = max(0.0, min(0.5, layout.radius / short))
+            adjustments = plate.Adjustments
+            try:
+                adjustments[1] = roundness
+            except TypeError:
+                # Early binding: makepy generates NO __setitem__ for the
+                # indexed propput — it exposes SetItem(Index, value)
+                # instead. Without this fallback the set failed
+                # silently and every plate shipped with PowerPoint's
+                # DEFAULT roundness (user-reported as a larger corner
+                # radius after the early-binding change).
+                adjustments.SetItem(1, roundness)
+        except Exception:  # noqa: BLE001 - cosmetic only, but LOUD:
+            # a silent styling failure already shipped once.
+            logger.warning("Could not set the plate corner radius",
+                           exc_info=True)
 
         text_names = self._build_label_texts(
-            slide, spec, layout, pic_left, pic_top, pic_h, to_points,
+            shapes, spec, layout, pic_left, pic_top, pic_h, to_points,
             font_points,
         )
 
         try:
-            selection = slide.Shapes.Range([plate.Name, *text_names])
+            selection = shapes.Range([plate.Name, *text_names])
             selection.Group()
         except Exception:  # noqa: BLE001 - ungrouped still works, just fiddlier
             logger.exception("Could not group the label object")
 
     def _build_label_texts(
-        self, slide, spec: LabelSpec, layout, pic_left, pic_top, pic_h,
+        self, shapes, spec: LabelSpec, layout, pic_left, pic_top, pic_h,
         to_points, font_points,
     ) -> list[str]:
         """One text box per key/value zone, on the SAME geometry the
@@ -486,40 +608,129 @@ class PptSendWorker(QObject):
         whole cell. Each box is grown by the native margin it is given,
         so the text lands exactly on the zone while the box stays
         comfortable to grab and edit in PowerPoint.
+
+        Boxes in one label differ only by geometry, text and alignment,
+        so the first box per alignment carries the full styling build
+        and becomes that alignment's prototype; every later box is a
+        native Duplicate of it, which carries ALL formatting — the
+        bullet suppression (b2e5aa6) included.
         """
 
         m = defaults.PPT_TEXT_MARGIN_PT
         style = spec.style
         key_align = _PP_ALIGNMENT.get(style.key_alignment, PP_ALIGN_LEFT)
         value_align = _PP_ALIGNMENT.get(style.value_alignment, PP_ALIGN_RIGHT)
+        # Alignment -> the first, fully styled box built for it. Scoped
+        # to this label: geometry and font scale are per picture.
+        prototypes: dict[int, object] = {}
 
-        def zone_box(laid, zone, alignment) -> str:
-            return self._add_text_box(
-                slide, laid.text, alignment,
-                pic_left + zone.x * to_points - m,
-                pic_top + (zone.y / spec.image_height) * pic_h - m,
-                zone.width * to_points + 2 * m,
-                (zone.height / spec.image_height) * pic_h + 2 * m,
+        def zone_box(laid, zone, alignment):
+            left = pic_left + zone.x * to_points - m
+            top = pic_top + (zone.y / spec.image_height) * pic_h - m
+            width = zone.width * to_points + 2 * m
+            height = (zone.height / spec.image_height) * pic_h + 2 * m
+            prototype = prototypes.get(alignment)
+            if prototype is not None and self._clone_supported is not False:
+                try:
+                    box = self._clone_text_box(
+                        prototype, laid.text, left, top, width, height
+                    )
+                except Exception:  # noqa: BLE001 - fidelity over speed
+                    # Once per send, not per box: one failed clone
+                    # predicts the rest; every box the clone path
+                    # skips is scratch-built below with full styling.
+                    self._clone_supported = False
+                    logger.warning(
+                        "Could not clone a label text box; building the "
+                        "rest of the send from scratch",
+                        exc_info=True,
+                    )
+                else:
+                    self._clone_supported = True
+                    return box
+            box = self._add_text_box(
+                shapes, laid.text, alignment, left, top, width, height,
                 font_points, style,
             )
+            prototypes[alignment] = box
+            return box
 
         names: list[str] = []
         for cell in layout.cells:
+            if self._stop.is_set():
+                # Between cells, not mid-box: Stop lands within a
+                # fraction of a slide instead of waiting out a whole
+                # label build.
+                raise _SendStopped()
             if isinstance(cell, LaidCustom):
-                names.append(zone_box(cell.text, cell.zone, PP_ALIGN_LEFT))
+                names.append(zone_box(cell.text, cell.zone, PP_ALIGN_LEFT).Name)
                 continue
-            names.append(zone_box(cell.key, cell.key_zone, key_align))
-            names.append(zone_box(cell.value, cell.value_zone, value_align))
+            names.append(zone_box(cell.key, cell.key_zone, key_align).Name)
+            names.append(
+                zone_box(cell.value, cell.value_zone, value_align).Name
+            )
         return names
 
     @staticmethod
+    def _clone_text_box(prototype, text, left, top, width, height):
+        """A styled copy of the prototype at its own rect and text.
+
+        Duplicate() copies the whole shape server-side in one call —
+        TextFrame, font, paragraph format and the bullet suppression
+        (b2e5aa6) ride along — so geometry and text are the only
+        per-box writes. .Item(1), never [1]: the makepy ShapeRange
+        exposes Item as a plain method (no Adjustments-style indexed
+        propput), and dynamic dispatch resolves the same name.
+        Geometry BEFORE text: Duplicate lands the copy offset from
+        the prototype, and the one layout pass the Text write
+        triggers must measure against the final rect.
+        """
+
+        dup_range = prototype.Duplicate()
+        try:
+            clone = dup_range.Item(1)
+            clone.Left = left
+            clone.Top = top
+            clone.Width = width
+            clone.Height = height
+            clone.TextFrame.TextRange.Text = text
+        except Exception:
+            # A half-placed copy must not linger on the slide; the
+            # caller rebuilds this box from scratch.
+            try:
+                dup_range.Delete()
+            except Exception:  # noqa: BLE001 - best effort
+                logger.exception("Could not remove a failed clone")
+            raise
+        return clone
+
+    @staticmethod
     def _add_text_box(
-        slide, text, alignment, left, top, width, height, font_points, style
-    ) -> str:
-        box = slide.Shapes.AddTextbox(
+        shapes, text, alignment, left, top, width, height, font_points, style
+    ):
+        box = shapes.AddTextbox(
             MSO_TEXT_ORIENTATION_HORIZONTAL, left, top, width, height
         )
         frame = box.TextFrame
+        try:
+            # BEFORE the text lands: templates default new boxes to
+            # auto-fit + wrap, so every text/font set below would
+            # trigger a PowerPoint re-measure and reflow — ~10 wasted
+            # layout passes per box when these came last (measured).
+            # Same end state, far less PowerPoint-side work.
+            frame.AutoSize = PP_AUTOSIZE_NONE
+            frame.WordWrap = MSO_FALSE
+            frame.VerticalAnchor = defaults.PPT_TEXT_VERTICAL_ANCHOR
+            # The box is grown by this same margin at creation, so the
+            # text still lands on the layout's zone geometry.
+            frame.MarginLeft = defaults.PPT_TEXT_MARGIN_PT
+            frame.MarginRight = defaults.PPT_TEXT_MARGIN_PT
+            frame.MarginTop = defaults.PPT_TEXT_MARGIN_PT
+            frame.MarginBottom = defaults.PPT_TEXT_MARGIN_PT
+        except Exception:  # noqa: BLE001 - cosmetic only, but loud:
+            # styling failures must be visible in a default-level log.
+            logger.warning("Could not pre-style a label text box",
+                           exc_info=True)
         text_range = frame.TextRange
         text_range.Text = text
         font = text_range.Font
@@ -540,23 +751,25 @@ class PptSendWorker(QObject):
             level = frame.Ruler.Levels(1)
             level.FirstMargin = 0
             level.LeftMargin = 0
-            frame.AutoSize = PP_AUTOSIZE_NONE
-            frame.WordWrap = MSO_FALSE
-            # The box is grown by this same margin at creation, so the
-            # text still lands on the layout's zone geometry.
-            frame.MarginLeft = defaults.PPT_TEXT_MARGIN_PT
-            frame.MarginRight = defaults.PPT_TEXT_MARGIN_PT
-            frame.MarginTop = defaults.PPT_TEXT_MARGIN_PT
-            frame.MarginBottom = defaults.PPT_TEXT_MARGIN_PT
             box.Fill.Visible = MSO_FALSE
             box.Line.Visible = MSO_FALSE
-        except Exception:  # noqa: BLE001 - cosmetic only
-            logger.debug("Could not style a label text box", exc_info=True)
-        return box.Name
+        except Exception:  # noqa: BLE001 - cosmetic only, but loud:
+            # this block carries the bullet suppression (b2e5aa6) —
+            # a silent failure here corrupts labels against bulleted
+            # templates with nothing in the log.
+            logger.warning("Could not style a label text box", exc_info=True)
+        return box
 
-    @staticmethod
-    def _set_notes(slide, notes: str) -> None:
+    def _set_notes(self, slide, notes: str) -> None:
+        if self._notes_supported is False:
+            return
         try:
             slide.NotesPage.Shapes.Placeholders(2).TextFrame.TextRange.Text = notes
+            self._notes_supported = True
         except Exception:  # noqa: BLE001 - blank layouts may lack the placeholder
-            logger.debug("Could not write slide notes", exc_info=True)
+            # Once per send, not per slide: the layout is uniform, so
+            # the first failure predicts the rest — skip the chain
+            # (NotesPage alone is ~7 marshalled calls a slide).
+            self._notes_supported = False
+            logger.debug("Could not write slide notes; skipping for the "
+                         "rest of the send", exc_info=True)
