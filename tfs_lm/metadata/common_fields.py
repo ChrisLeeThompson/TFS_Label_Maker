@@ -96,7 +96,7 @@ def summarize(
     partial = accumulator.partial_categories()
 
     if stopped:
-        return f"Parsing stopped — {contributors} of {total_images} read"
+        return f"Reading stopped — {contributors} of {total_images} read"
 
     if contributors == 0:
         return "No TFS metadata found in the loaded images"

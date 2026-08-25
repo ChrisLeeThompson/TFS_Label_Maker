@@ -4,7 +4,7 @@ Two classes: MetadataTreeModel holds the FieldNode hierarchy and the
 check state that feeds the label matrix; MetadataFilterProxy sits
 between it and the QML TreeView to implement search.
 
-The tree is the batch's UNION and is structurally stable while the
+The tree is the batch's union and is structurally stable while the
 user cycles the current image: Previous/Next never rebuild the tree,
 they only swap which image's values the value column shows (fields the
 current image lacks render dimmed with an empty value). Partial fields
@@ -17,10 +17,10 @@ QML — paths are the identity currency shared with the accumulator and
 the label cells, and they stay valid across the model resets that
 indexes do not survive.
 
-Check state is SESSION-ONLY by explicit user decision: nothing about
+Check state is session-only by explicit user decision: nothing about
 the selected fields is written to QSettings; a fresh launch starts
 clean. Within a session it is durable: a private "desired" intent list
-(``_desired``) records what the user has chosen and is mutated ONLY by
+(``_desired``) records what the user has chosen and is mutated only by
 explicit user action — never by ``populate``. The visible check state
 (``_checked``) is always the pure projection of that intent onto the
 current batch: ``[p for p in _desired if p is a live leaf][:capacity]``.
@@ -149,12 +149,12 @@ class MetadataTreeModel(QAbstractItemModel):
         self._field_count = 0
         # Presence: path -> contributing images carrying it (the badge's
         # "n"), the contributor total (the "m"), and which known paths
-        # the CURRENT image has (drives dimming while cycling).
+        # the current image has (drives dimming while cycling).
         self._presence: dict[str, int] = {}
         self._contributors = 0
         self._present: set[str] = set()
         # Session intent — what the user has chosen, in pick order.
-        # Mutated ONLY by explicit user action (setChecked/clearChecks/
+        # Mutated only by explicit user action (setChecked/clearChecks/
         # set_capacity shrink/reorder), never by populate. Durable within
         # the session, unbounded (the projection applies the cap).
         self._desired: list[str] = []
@@ -174,7 +174,7 @@ class MetadataTreeModel(QAbstractItemModel):
         removed file can shrink the union, so an incrementally grown
         tree could keep a field no remaining image carries.
 
-        ``values`` is the CURRENT IMAGE's flat dict (any values dict
+        ``values`` is the current image's flat dict (any values dict
         works — paths it lacks simply show empty and dim). ``presence``
         maps path -> contributing-image count for the "n/m" badges;
         None means fully present (the single-image and unit-test case).
@@ -200,7 +200,7 @@ class MetadataTreeModel(QAbstractItemModel):
     def _rebuild_display(self, values) -> None:
         """Format the current image's values for the known paths.
 
-        A known path absent from ``values`` gets NO display entry — it
+        A known path absent from ``values`` gets no display entry — it
         renders as an empty value and dims. The em dash stays reserved
         for present-but-empty values, mirroring the export policy's
         distinction between "field missing" and "field blank".
@@ -217,7 +217,7 @@ class MetadataTreeModel(QAbstractItemModel):
     def set_current_image(self, values) -> None:
         """Swap which image's values the value column shows.
 
-        Touches neither the tree structure nor the check intent — NO
+        Touches neither the tree structure nor the check intent — no
         model reset, so the TreeView's expansion state and the grid's
         slot assignments survive cycling. Announces only the two roles
         that actually changed, one ranged dataChanged per parent node
@@ -243,7 +243,7 @@ class MetadataTreeModel(QAbstractItemModel):
         visit(self._root)
 
     def clear_fields(self) -> None:
-        # Empties the tree AND the projection, but NOT _desired — the
+        # Empties the tree and the projection, but not _desired — the
         # user's intent survives Clear and returns on the next batch.
         self.populate(set(), {})
 
@@ -286,7 +286,7 @@ class MetadataTreeModel(QAbstractItemModel):
         node = self._by_path.get(path)
         if node is None or not node.is_leaf:
             return
-        # Guard against the VISIBLE state — the checkbox the user sees.
+        # Guard against the visible state — the checkbox the user sees.
         if checked == (path in self._checked_set):
             return
         # Capacity is gated on the live projection: a refused check
@@ -318,7 +318,7 @@ class MetadataTreeModel(QAbstractItemModel):
         self._reproject_and_notify()
 
     def set_capacity(self, capacity: int) -> None:
-        """Adopt the label grid's FREE slot count as the check limit.
+        """Adopt the label grid's free slot count as the check limit.
 
         Zero is legal: custom text cells occupy slots without being
         checks, so an all-custom grid leaves no room for any field.
@@ -351,10 +351,21 @@ class MetadataTreeModel(QAbstractItemModel):
 
         return list(self._checked)
 
+    def desired_paths(self) -> list[str]:
+        """The session intent, including entries this batch lacks.
+
+        The label grid keeps a cell's placement for exactly as long as
+        this list keeps its path: a Clear empties the projection but not
+        the intent, so the arrangement returns with the next batch,
+        while an uncheck forgets both.
+        """
+
+        return list(self._desired)
+
     def reorder_checked(self, paths: list[str]) -> None:
         """Adopt the grid's reading order as the new check order.
 
-        The guard is against the VISIBLE set (the grid only ever
+        The guard is against the visible set (the grid only ever
         reorders the cells it shows). The new visible order is written
         to the FRONT of the intent, with dormant/absent desired entries
         preserved after it — so a visible-subset drag never loses intent
@@ -372,7 +383,7 @@ class MetadataTreeModel(QAbstractItemModel):
         self._checked_set = set(self._checked)
 
     def display_value(self, path: str) -> str:
-        """The formatted value the tree shows for the CURRENT image —
+        """The formatted value the tree shows for the current image —
         the matrix cell shows the same string, so the two surfaces can
         never disagree about the image being previewed. Empty when the
         current image lacks the path."""

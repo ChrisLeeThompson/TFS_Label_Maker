@@ -28,7 +28,7 @@ class BackgroundJob(QObject):
     A fresh Event is created per run — workers never share state across
     runs, so a stop request cannot leak into the next job.
 
-    Results are NOT carried on the finished signal. The job creates a
+    Results are not carried on the finished signal. The job creates a
     result container up front and hands it to the worker, so reading it
     afterwards cannot race worker deletion, and large dicts are never
     deep-copied across a queued connection.
@@ -109,7 +109,7 @@ class BackgroundJob(QObject):
         if self._stop_event.is_set():
             return
         logger.info("%s: stop requested", type(self).__name__)
-        self.statusUpdated.emit("Stop requested...")
+        self.statusUpdated.emit("Stopping…")
         self._stop_event.set()
 
     @property
@@ -161,7 +161,7 @@ class BackgroundJob(QObject):
         # thread, so isRunning would keep reporting True for a thread that
         # no longer exists. Settle the observable state here instead.
         #
-        # The QThread reference is deliberately NOT cleared: its own
+        # The QThread reference is deliberately not cleared: its own
         # deleteLater is still pending, and dropping the last Python
         # reference to a QThread with a queued deleteLater risks the
         # wrapper destroying an object Qt is about to delete.

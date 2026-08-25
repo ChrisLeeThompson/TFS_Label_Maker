@@ -19,7 +19,7 @@ ScrollView {
     // UX-only gate: exports and sends use frozen style snapshots, so
     // a mid-run edit only restyles the live preview away from what
     // the running job is writing — misleading, never unsafe. Gating
-    // the FORM (not the ScrollView) keeps mid-run scrolling and
+    // the form (not the ScrollView) keeps mid-run scrolling and
     // reading possible; hierarchical enabled composes with the
     // hasBorder child bindings, which reassert on re-enable.
     property bool interactive: true
@@ -265,7 +265,7 @@ ScrollView {
         Item { Layout.fillWidth: false; implicitWidth: 1; implicitHeight: 1 }
         Button {
             Layout.alignment: Qt.AlignLeft
-            text: "Restore defaults"
+            text: Strings.restoreDefaultsText
             padding: AppConfig.statusBarButtonPadding
             onClicked: {
                 root.settings.restoreDefaults()

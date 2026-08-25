@@ -40,7 +40,7 @@ class ImageSetController(QObject):
         # Which image's values the tree and the label preview show.
         # -1 until a batch lands; clamped on every parse completion.
         self._current_index = -1
-        # True while the tree is empty BECAUSE the user stopped a
+        # True while the tree is empty because the user stopped a
         # parse — the empty-state label then explains the stop instead
         # of falsely reporting the images unreadable.
         self._last_parse_stopped = False
@@ -92,7 +92,7 @@ class ImageSetController(QObject):
 
     @Property(int, notify=fieldsChanged)
     def fieldCount(self) -> int:
-        # The batch UNION's leaf count. Backed by the tree, not the
+        # The batch union's leaf count. Backed by the tree, not the
         # live accumulator: the tree is GUI-thread state that only
         # changes on parseComplete, so this can never observe a
         # half-built union mid-parse.
@@ -143,7 +143,7 @@ class ImageSetController(QObject):
     def _on_parse_complete(self, completed: bool) -> None:
         accumulator = self._job.results.accumulator
         # Preserve the browsing position across an additive re-parse;
-        # clamp covers removals and the first batch — in BOTH branches:
+        # clamp covers removals and the first batch — in both branches:
         # a stopped run also re-announces the index below, and QML must
         # never see -1 (or an index past the end) beside a populated
         # file list. Until this sat outside the if, stopping a first

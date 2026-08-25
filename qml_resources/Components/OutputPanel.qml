@@ -4,7 +4,7 @@ import QtQuick.Layouts
 import "../Config"
 
 // The Output card's controls: what Start produces, and the PowerPoint
-// send that can ride along (or, in PowerPoint Only mode, BE the output).
+// send that can ride along (or, in PowerPoint only mode, be the output).
 //
 // Same binding contract as SettingsPanel: bind the control's value
 // *from* the setting and write back in the interaction handler, never a
@@ -21,7 +21,7 @@ Item {
 
     required property var powerpoint
     required property var settings
-    // UX-only gate: every value here is FROZEN into snapshots at
+    // UX-only gate: every value here is frozen into snapshots at
     // Start, so a mid-run edit could never touch the running job —
     // it would silently apply to the next run, which is exactly the
     // misleading feedback this gate prevents. No Python-side refusal
@@ -129,7 +129,7 @@ Item {
             id: sendCheck
             Layout.fillWidth: true
             text: Strings.pptSendLabel
-            // PowerPoint Only output IS a send: shown checked and not
+            // PowerPoint only output is itself a send: shown checked and not
             // interactive, without writing the forced state into the
             // stored preference (it returns when the mode changes back).
             // Also disabled without Windows + pywin32; the tooltip says

@@ -7,7 +7,7 @@ slot (holes stay where they are), and a drag moves a cell to an empty
 slot or swaps it with an occupant. Custom cells belong to the grid
 alone: the tree's sync never touches them, which is what makes them
 survive Clear and batch reloads. The grid's slot count minus the
-custom cells IS the check capacity, enforced where checks happen (the
+custom cells is exactly the check capacity, enforced where checks happen (the
 metadata tree) — this model never re-implements it.
 """
 
@@ -50,6 +50,12 @@ class LabelMatrixModel(QAbstractListModel):
         self._slots: list[CellSpec | CustomCellSpec | None] = (
             [None] * (self._rows * self._columns)
         )
+        # Path -> the slot it last occupied. A slot index is the only
+        # record of a placement, so without this the arrangement dies
+        # the moment a path vacates — which Clear does to every cell at
+        # once. Kept for paths the caller still wants (see sync_cells'
+        # `remembered`), single-valued per slot, session-only.
+        self._home: dict[str, int] = {}
 
     # --- Grid shape ------------------------------------------------------
 
@@ -87,6 +93,15 @@ class LabelMatrixModel(QAbstractListModel):
         self._rows = rows
         self._columns = columns
         self._slots = kept + [None] * (capacity - len(kept))
+        # A reshape is a dense repack — it already destroys holes by
+        # design, so remembered placements from the old shape mean
+        # nothing. Rebuilt from where the survivors actually landed,
+        # which is also what keeps out-of-range indices from existing.
+        self._home = {
+            cell.path: i
+            for i, cell in enumerate(self._slots)
+            if isinstance(cell, CellSpec)
+        }
         self.endResetModel()
 
         self.gridChanged.emit()
@@ -97,7 +112,7 @@ class LabelMatrixModel(QAbstractListModel):
     # --- Content sync ----------------------------------------------------
 
     def _first_empty_slot(self) -> int | None:
-        """The next slot a new check fills: COLUMN-wise, down column 1
+        """The next slot a new check fills: column-wise, down column 1
         then down column 2 (explicit user preference — a two-column
         label reads as two stacks, so it should fill that way too).
         Holes refill at the first column-wise empty. Only the FILL
@@ -111,17 +126,40 @@ class LabelMatrixModel(QAbstractListModel):
                     return index
         return None
 
-    def sync_cells(self, cells: list[CellSpec]) -> None:
+    def _claim_home(self, path: str, index: int) -> None:
+        """Record where a path lives, evicting any stale claim on that
+        slot — one remembered path per slot, so a return is never
+        ambiguous."""
+
+        for other, slot in list(self._home.items()):
+            if slot == index and other != path:
+                del self._home[other]
+        self._home[path] = index
+
+    def sync_cells(
+        self, cells: list[CellSpec], remembered: set[str] | None = None
+    ) -> None:
         """Reconcile the metadata slots with the checked set.
 
         Surviving cells KEEP their slots (the user's arrangement is
         sacred), with texts refreshed in place — a new batch changes
         representative values without moving anything. Removed paths
-        vacate their slots; new paths fill column-wise in check order
+        vacate their slots; new paths return to their remembered slot
+        when it is free, else fill column-wise in check order
         (_first_empty_slot). Custom cells are invisible here: never
         vacated, never refreshed — that is their session persistence.
+
+        `remembered` is the set of paths whose PLACEMENT outlives the
+        vacancy — the caller's still-wanted set. Clear empties the
+        checked projection without touching intent, so without this
+        every cell would vacate and the arrangement (holes included)
+        would be lost; the refill would even transpose a full grid,
+        because check order is row-major after a drag while the fill is
+        column-major. Omitted (None) means forget every vacated path,
+        which is what a bare model does.
         """
 
+        remembered = remembered or set()
         incoming = {cell.path: cell for cell in cells}
         changed: list[int] = []
         count_moved = False
@@ -132,22 +170,48 @@ class LabelMatrixModel(QAbstractListModel):
             replacement = incoming.pop(slot.path, None)
             if replacement is None:
                 self._slots[i] = None
+                # The slot is vacated either way; only the memory of it
+                # is conditional — an unchecked path is gone for good,
+                # a merely-absent one is coming back.
+                if slot.path in remembered:
+                    self._claim_home(slot.path, i)
+                else:
+                    self._home.pop(slot.path, None)
                 changed.append(i)
                 count_moved = True
-            elif replacement != slot:
-                self._slots[i] = replacement
-                changed.append(i)
+            else:
+                self._claim_home(slot.path, i)
+                if replacement != slot:
+                    self._slots[i] = replacement
+                    changed.append(i)
 
         additions = [cell for cell in cells if cell.path in incoming]
+
+        def place(cell: CellSpec, index: int) -> None:
+            self._slots[index] = cell
+            self._claim_home(cell.path, index)
+            changed.append(index)
+
+        # Homecomings first, so a returning cell cannot lose its slot to
+        # a newcomer that merely sorted earlier.
+        homeless = []
         for cell in additions:
+            home = self._home.get(cell.path)
+            if home is not None and 0 <= home < len(self._slots) \
+                    and self._slots[home] is None:
+                place(cell, home)
+                count_moved = True
+            else:
+                homeless.append(cell)
+
+        for cell in homeless:
             empty = self._first_empty_slot()
             if empty is None:
                 # Capacity is enforced upstream; reaching this means the
                 # tree and grid disagree — log loudly, drop quietly.
                 logger.warning("No free slot for %s", cell.path)
                 break
-            self._slots[empty] = cell
-            changed.append(empty)
+            place(cell, empty)
             count_moved = True
 
         for i in changed:
@@ -216,6 +280,12 @@ class LabelMatrixModel(QAbstractListModel):
             self._slots[to_index],
             self._slots[from_index],
         )
+        # A drag re-homes what it moves: the slot a cell returns to
+        # after a Clear is the one the user last parked it in.
+        for i in (from_index, to_index):
+            cell = self._slots[i]
+            if isinstance(cell, CellSpec):
+                self._claim_home(cell.path, i)
         # Both slots changed content (occupied state included) — without
         # these announcements the QML cells never repaint after a drag.
         # Guarded by test_move_announces_both_slots; a mutation probe

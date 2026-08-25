@@ -3,13 +3,13 @@
 Ported from Images_To_PPT_v3's image_file_worker, with its four real
 bugs fixed: it never called CoInitialize (COM on a worker thread needs
 it), it returned on the first per-image error instead of isolating,
-it inserted every slide at the SAME position (silently reversing the
+it inserted every slide at the same position (silently reversing the
 batch), and it placed pictures at a 1x1 point placeholder size.
 
 What lands on a slide, per the user's design:
-  * the ORIGINAL (unlabelled) image, fitted to the slide;
-  * optionally a NATIVE, editable label object — a rounded-rectangle
-    plate behind key/value TEXT BOXES, all grouped — built from the
+  * the original, unlabelled image, fitted to the slide;
+  * optionally a native, editable label object — a rounded-rectangle
+    plate behind key/value text boxes, all grouped — built from the
     LabelSpec rather than rasterised, so it can be moved, resized,
     restyled and text-edited in PowerPoint. Text boxes, not a table:
     PowerPoint refuses to group a table with a shape, and the group is
@@ -64,7 +64,8 @@ CONTENT_PLACEHOLDER_TYPES = frozenset({
     PP_PLACEHOLDER_OBJECT, PP_PLACEHOLDER_BITMAP, PP_PLACEHOLDER_PICTURE,
 })
 # MsoShapeType: the shape AddPicture2 returns when an empty content
-# placeholder ABSORBED the insert (the shape IS the placeholder).
+# placeholder absorbed the insert (the returned shape is the
+# placeholder itself).
 MSO_SHAPE_TYPE_PLACEHOLDER = 14
 # Where images start, after a title slide — the reference's convention.
 FIRST_CONTENT_POSITION = 2
@@ -231,7 +232,7 @@ class PptSendWorker(QObject):
                 position = self._add_transition(presentation, position)
 
             # Two progress units per slide — picture, then label — so
-            # the bar moves INSIDE big labelled slides instead of
+            # the bar moves within big labelled slides instead of
             # freezing for the whole block.
             total = len(self._items)
             for index, item in enumerate(self._items):
@@ -258,11 +259,14 @@ class PptSendWorker(QObject):
                     position += 1
                 self.progressUpdated.emit(2 * index + 2, 2 * total)
             completed = True
-        except Exception as exc:  # noqa: BLE001 - reported, never fatal
+        except Exception:  # noqa: BLE001 - reported, never fatal
+            # The exception text goes to the log, never to the status
+            # bar: a raw com_error tuple tells the user nothing and
+            # reads like a crash.
             logger.exception("PowerPoint send failed")
-            self._results.error_reason = str(exc)
+            self._results.error_reason = defaults.STATUS_PPT_FAILED
         finally:
-            # Restore BEFORE the refs drop and the apartment closes;
+            # Restore before the refs drop and the apartment closes;
             # self-guarded so a closed PowerPoint cannot mask the real
             # error (or the successful completion).
             try:
@@ -424,7 +428,7 @@ class PptSendWorker(QObject):
         none — the caller then falls back to fitting the whole slide.
 
         The frame (left, top, width, height) is captured during the
-        scan — the placeholder IS the designed frame, filled edge to
+        scan — the placeholder is itself the designed frame, filled edge to
         edge on the fitting axis — so the caller never re-reads the
         rect over COM.
         """
@@ -451,17 +455,17 @@ class PptSendWorker(QObject):
     def _place_picture(self, presentation, slide, source: Path):
         """Insert the picture the way a manual insert lands.
 
-        The content placeholder is NEVER deleted (explicit user
+        The content placeholder is never deleted (explicit user
         decision: the content object must survive, so deleting the
         image later restores the empty content area). Three paths:
 
-        * The empty content placeholder ABSORBS AddPicture2 — the
-          returned Shape IS the placeholder — and PowerPoint applies
+        * The empty content placeholder absorbs AddPicture2 — the
+          returned Shape is the placeholder itself — and PowerPoint applies
           the placeholder's own fit, exactly like a manual insert.
           Hands off: touching the geometry afterwards would fight the
           placeholder's semantics (and a delete here destroyed the
           picture outright — "Shape.Left : Object does not exist").
-        * No absorption but the layout HAS a content area: contain-fit
+        * No absorption but the layout has a content area: contain-fit
           the free-floating picture to the placeholder's frame.
         * No content area at all (blank generic slides, title-only
           layouts): fit PPT_IMAGE_FIT of the slide, centred.
@@ -531,7 +535,7 @@ class PptSendWorker(QObject):
             return
 
         # The one scale that maps image pixels onto slide points. Every
-        # dimension — rect, FONT and border alike — must go through it:
+        # dimension — rect, font and border alike — must go through it:
         # the style's font_size is a pixel size against the 1536 px
         # reference, and using it raw as points renders text 2-4x too
         # big for the plate the geometry builds (measured).
@@ -574,14 +578,14 @@ class PptSendWorker(QObject):
             try:
                 adjustments[1] = roundness
             except TypeError:
-                # Early binding: makepy generates NO __setitem__ for the
+                # Early binding: makepy generates no __setitem__ for the
                 # indexed propput — it exposes SetItem(Index, value)
                 # instead. Without this fallback the set failed
                 # silently and every plate shipped with PowerPoint's
-                # DEFAULT roundness (user-reported as a larger corner
+                # default roundness (user-reported as a larger corner
                 # radius after the early-binding change).
                 adjustments.SetItem(1, roundness)
-        except Exception:  # noqa: BLE001 - cosmetic only, but LOUD:
+        except Exception:  # noqa: BLE001 - cosmetic only, but loud:
             # a silent styling failure already shipped once.
             logger.warning("Could not set the plate corner radius",
                            exc_info=True)
@@ -601,7 +605,7 @@ class PptSendWorker(QObject):
         self, shapes, spec: LabelSpec, layout, pic_left, pic_top, pic_h,
         to_points, font_points,
     ) -> list[str]:
-        """One text box per key/value zone, on the SAME geometry the
+        """One text box per key/value zone, on the same geometry the
         burned-in label measures — inset by the label's padding rather
         than starting at the plate's edge, with keys and values aligned
         per the style's settings. A custom cell is one box spanning its
@@ -612,7 +616,7 @@ class PptSendWorker(QObject):
         Boxes in one label differ only by geometry, text and alignment,
         so the first box per alignment carries the full styling build
         and becomes that alignment's prototype; every later box is a
-        native Duplicate of it, which carries ALL formatting — the
+        native Duplicate of it, which carries all formatting — the
         bullet suppression (b2e5aa6) included.
         """
 
@@ -681,7 +685,7 @@ class PptSendWorker(QObject):
         per-box writes. .Item(1), never [1]: the makepy ShapeRange
         exposes Item as a plain method (no Adjustments-style indexed
         propput), and dynamic dispatch resolves the same name.
-        Geometry BEFORE text: Duplicate lands the copy offset from
+        Geometry before text: Duplicate lands the copy offset from
         the prototype, and the one layout pass the Text write
         triggers must measure against the final rect.
         """
@@ -713,7 +717,7 @@ class PptSendWorker(QObject):
         )
         frame = box.TextFrame
         try:
-            # BEFORE the text lands: templates default new boxes to
+            # Before the text lands: templates default new boxes to
             # auto-fit + wrap, so every text/font set below would
             # trigger a PowerPoint re-measure and reflow — ~10 wasted
             # layout passes per box when these came last (measured).

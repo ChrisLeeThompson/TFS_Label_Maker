@@ -6,16 +6,16 @@ import "../Config"
 // The label matrix as an Excel-like slot grid: rows x columns of fixed,
 // clearly-bounded cells (per the Label rows / Label columns settings),
 // each empty, holding one checked field, or holding user-typed custom
-// text. Checking fills the first empty cell COLUMN-wise (down column 1,
+// text. Checking fills the first empty cell column-wise (down column 1,
 // then column 2); dragging moves a cell's item to an empty cell or
-// swaps it with the occupant; dropping OUTSIDE the plate deletes the
+// swaps it with the occupant; dropping outside the plate deletes the
 // cell (uncheck / remove); double-clicking an empty cell types a
 // custom note that appears on every image's label.
 //
-// The grid is an OVERLAY on the label plate: the rectangle behind it
+// The grid is an overlay on the label plate: the rectangle behind it
 // shows the label's real background colour, opacity, corner radius and
 // border styling live, so arranging and styling happen on one surface.
-// This grid is the EDITOR, not the renderer: cells split into key/value
+// This grid is the editor, not the renderer: cells split into key/value
 // halves that follow the alignment settings, while the output lays true
 // per-column zones. (The output still trims empty rows/columns; the
 // plate here frames the full grid because the grid is the editor.)
@@ -29,7 +29,7 @@ Item {
     required property var images    // ImageSetController: batch cycling
     property bool interactive: true
 
-    // The card sizes itself from this — a FIXED frame: the largest
+    // The card sizes itself from this — a fixed frame: the largest
     // grid (4 rows) plus a permanently reserved nav strip, so changing
     // Label rows/columns (or a batch loading) never resizes the card
     // or the window. The plate grows and shrinks centred inside.
@@ -67,7 +67,7 @@ Item {
     Rectangle {
         id: plate
         anchors.centerIn: parent
-        // Centred in the space ABOVE the reserved nav strip. Layout
+        // Centred in the space above the reserved nav strip. Layout
         // only — plate stays a direct child of root, so _insidePlate's
         // coordinate comparison is untouched.
         anchors.verticalCenterOffset: -root._navReserve / 2
@@ -209,7 +209,7 @@ Item {
 
                     // Ghosted state: this image's label will omit the
                     // cell (field absent + Omit policy). The dim rides
-                    // the metadata TEXTS, never the chip opacity (that
+                    // the metadata texts, never the chip opacity (that
                     // line belongs to the drag gesture) — the slot, its
                     // border and the drag stay fully live, because the
                     // arrangement is batch-wide.

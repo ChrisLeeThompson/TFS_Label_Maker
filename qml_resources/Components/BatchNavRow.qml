@@ -37,11 +37,6 @@ RowLayout {
         padding: AppConfig.statusBarButtonPadding
         enabled: root.interactive && root.currentIndex > 0
         onClicked: root.previousClicked()
-
-        ToolTip.text: Strings.batchNavPreviousTooltip
-        ToolTip.visible: hovered
-        ToolTip.delay: AppConfig.toolTipDelayMs
-        ToolTip.timeout: AppConfig.toolTipTimeoutMs
     }
 
     ComboBox {
@@ -79,11 +74,6 @@ RowLayout {
         padding: AppConfig.statusBarButtonPadding
         enabled: root.interactive && root.currentIndex < root.count - 1
         onClicked: root.nextClicked()
-
-        ToolTip.text: Strings.batchNavNextTooltip
-        ToolTip.visible: hovered
-        ToolTip.delay: AppConfig.toolTipDelayMs
-        ToolTip.timeout: AppConfig.toolTipTimeoutMs
     }
 
 }

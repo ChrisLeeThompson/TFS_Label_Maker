@@ -140,7 +140,6 @@ QtObject {
     // on top of it only muddies the artwork against the dark card.
     readonly property real dropZoneIdleOpacity: 1.0
     readonly property url iconChevronRight: "../assets/chevron-right.svg"
-    readonly property url iconDownArrow: "../assets/down_arrow_white.svg"
 
     // --- Label style bounds -------------------------------------------
     // Mirrors tfs_lm/defaults.py. Keep the two in step: these drive the

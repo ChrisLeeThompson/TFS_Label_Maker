@@ -110,7 +110,7 @@ class AppController(QObject):
         return self._busy
 
     def _wants_ppt(self) -> bool:
-        """The effective send flag. PowerPoint-Only output IS a send, so
+        """The effective send flag. PowerPoint-only output is itself a send, so
         the mode implies it without mutating the persisted checkbox —
         the stored preference returns untouched when the mode changes
         back."""
@@ -166,10 +166,11 @@ class AppController(QObject):
 
         if not paths.output_root_is_writable():
             self.errorOccurred.emit(
-                f"Cannot write to the script directory:\n{paths.base_dir()}\n\n"
-                "Output cannot be saved until this is resolved."
+                "TFS Label Maker cannot save output — this folder is "
+                f"read-only:\n{paths.base_dir()}\n\n"
+                "Move the app to a folder you can write to, then restart."
             )
-            self._set_status("Script directory is not writable")
+            self._set_status("Cannot save output — this folder is read-only")
             return
 
         self._set_status(defaults.STATUS_READY)
@@ -199,7 +200,9 @@ class AppController(QObject):
             run_dir = paths.make_run_dir()
         except OSError as exc:
             logger.exception("Could not create the run directory")
-            self.errorOccurred.emit(f"Could not create the run directory:\n{exc}")
+            self.errorOccurred.emit(
+                f"Could not create the output folder:\n{exc}"
+            )
             return
 
         tasks, skips = build_tasks(
@@ -294,6 +297,6 @@ class AppController(QObject):
         self._images.wait_for_stop()
         # QSettings buffers writes; without this a change made moments
         # before quitting is silently lost. (Checked fields are
-        # deliberately NOT persisted — session-only by user decision.)
+        # deliberately not persisted — session-only by user decision.)
         self._settings.flush()
         self._powerpoint.flush()

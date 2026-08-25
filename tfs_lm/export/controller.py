@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Reasons an image contributes no outputs at all; recorded verbatim in
 # export_report.json's "skipped" list and counted in the end summary.
 SKIP_NO_METADATA = "no metadata"
-SKIP_NO_FIELDS = "no selected field present"
+SKIP_NO_FIELDS = "no selected fields present"
 
 
 def format_for_label(meta, path: str) -> str:
@@ -38,7 +38,7 @@ def resolve_cell(meta, path: str, policy: int) -> str | None:
     """This image's label text for a checked path, or None to omit.
 
     Presence is PATH membership in the image's metadata: a present-but-
-    empty value formats to the em dash under BOTH policies; only true
+    empty value formats to the em dash under both policies; only true
     absence consults the missing-field policy. Deliberately raise-free
     (dict membership plus the total formatter chain) — build_tasks and
     build_ppt_items run unguarded on the GUI thread.
@@ -60,14 +60,14 @@ def build_tasks(
     worker gets only frozen snapshots. Returns (tasks, skips) where
     skips is [(source, reason)] for images that get no outputs at all:
     never parsed, or — under the Omit policy — no selected field
-    present and no custom cell. Such images write NOTHING, not even a
+    present and no custom cell. Such images write nothing at all, not even a
     watermark copy: an unlabelled copy inside a labelled_images_* run
     dir would misrepresent the run, so the report carries the reason
     instead.
     """
 
     # The user's grid arrangement, shared by every image in the batch;
-    # only the VALUES differ per image — and, under the Omit policy,
+    # only the values differ per image — and, under the Omit policy,
     # which of the arranged cells this image's label actually carries.
     placements = label.matrix.placed_cells()
     style = settings.label_style()
@@ -79,7 +79,7 @@ def build_tasks(
     tasks: list[ExportTask] = []
     skips: list[tuple[Path, str]] = []
     # Discovery de-dupes by resolved path, so two different files with
-    # the SAME NAME from different folders are a legal batch — their
+    # the same name from different folders are a legal batch — their
     # outputs must not overwrite each other in the flat run dir.
     used_stems: set[str] = set()
 
@@ -104,7 +104,7 @@ def build_tasks(
                 # the shared frozen instance passes straight through.
                 cells.append(PlacedCell(cell=placed, row=row, column=column))
                 continue
-            # Metadata cells resolve THIS image's value; an absent
+            # Metadata cells resolve this image's own value; an absent
             # path omits the cell or dashes it, per the policy. The
             # layout's rank-based trim then collapses any row/column
             # the omissions emptied — for this image only.
@@ -174,7 +174,7 @@ class ExportController(QObject):
     statusUpdated = Signal(str)
     progressUpdated = Signal(int, int)
     isExportingChanged = Signal()
-    # Emitted AFTER the report is written and the summary status is set,
+    # Emitted after the report is written and the summary status is set,
     # so anything chained off it (the PowerPoint send) cannot race them.
     exportFinished = Signal(bool)
 
@@ -263,7 +263,7 @@ class ExportController(QObject):
             )
 
         if not completed:
-            parts = [f"Export stopped — wrote {wrote} of {wrote + failed} started"]
+            parts = [f"Export stopped — wrote {wrote} of {wrote + failed} files"]
         else:
             parts = [
                 f"Wrote {wrote} file{'' if wrote == 1 else 's'} to {run_name}"
@@ -273,8 +273,8 @@ class ExportController(QObject):
         no_meta = sum(1 for _, r in self._skips if r == SKIP_NO_METADATA)
         no_fields = sum(1 for _, r in self._skips if r == SKIP_NO_FIELDS)
         if no_meta:
-            parts.append(f"{no_meta} skipped (no metadata)")
+            parts.append(f"{no_meta} skipped ({SKIP_NO_METADATA})")
         if no_fields:
-            parts.append(f"{no_fields} skipped (no fields present)")
+            parts.append(f"{no_fields} skipped ({SKIP_NO_FIELDS})")
         self.statusUpdated.emit(" — ".join(parts))
         self.exportFinished.emit(completed)

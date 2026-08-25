@@ -459,7 +459,7 @@ class SettingsController(QObject):
 
     @Property(bool, notify=outputModeChanged)
     def outputIsPptOnly(self) -> bool:
-        """Gates the send checkbox: this mode IS a send, so the box shows
+        """Gates the send checkbox: this mode is itself a send, so the box shows
         checked and refuses interaction without touching the stored flag."""
 
         return self._output_mode == defaults.OUTPUT_PPT_ONLY

@@ -34,7 +34,7 @@ def build_ppt_items(images, label, settings, add_label_object: bool) -> list[Ppt
     start() branches: the normal one (after the export) and the
     image-only one (no metadata selected, no export at all).
 
-    The picture is always the ORIGINAL source. The notes always carry
+    The picture is always the original source. The notes always carry
     the filename plus the selected metadata, so the values survive even
     when the label object is off or the styling is not wanted.
     """
@@ -69,7 +69,7 @@ def build_ppt_items(images, label, settings, add_label_object: bool) -> list[Ppt
         notes = source.name
         if valued:
             # Custom text appears bare at its grid position; metadata
-            # keeps the conventional "key: value" REGARDLESS of the
+            # keeps the conventional "key: value" regardless of the
             # label's separator setting — notes are the data-recovery
             # channel, not the styled label.
             notes += "\n" + ", ".join(

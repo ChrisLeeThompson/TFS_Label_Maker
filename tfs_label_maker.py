@@ -1,5 +1,21 @@
 # This Python file uses the following encoding: utf-8
-"""TFS Label Maker — application entry point."""
+"""
+TFS Label Maker
+.
+This application builds styled labels from TFS microscope image metadata.
+It can export the generated labels as SVG files, PNG images, and PowerPoint objects.
+Images with labels can be exported to an active PowerPoint presentation.
+.
+Authors: Chris Thompson and Anthropic's Claude.
+.
+If you have questions or comments, please contact me (GitHub: ChrisLeeThompson).
+.
+Thank you,
+Chris Thompson
+.
+Copyright (c) 2026 Christopher Thompson.
+Released under the MIT License -- see the LICENSE file.
+"""
 
 from __future__ import annotations
 

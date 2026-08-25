@@ -19,10 +19,10 @@ class LabelController(QObject):
 
     Data flows one way: tree checks -> cells (on every checkedChanged,
     including the rebuild after each parse; also on currentImageChanged
-    — the cells show the CURRENT image's values — and on a
+    — the cells show the current image's values — and on a
     missing-field policy flip, which re-resolves the ghost state); the
     grid shape follows the labelRows/labelColumns settings, and the
-    grid's FREE slot count (slots minus custom text cells) is pushed
+    grid's free slot count (slots minus custom text cells) is pushed
     into the tree as its check capacity. Two flows go back the other
     way: drag reorder pushes the grid's reading order into the tree's
     (session-only) check order, and drag-out delete unchecks the
@@ -60,7 +60,7 @@ class LabelController(QObject):
         """Adopt the configured grid shape, evicting what no longer fits.
 
         Ordering is load-bearing: the grid's reading-order eviction is
-        THE eviction. The dropped paths are unchecked FIRST, so that by
+        the only eviction. The dropped paths are unchecked first, so that by
         the time the tree's capacity tightens the checked set already
         fits and set_capacity has nothing further to evict. Applying
         capacity first let two disagreeing policies (reading-order tail
@@ -90,13 +90,19 @@ class LabelController(QObject):
         )
 
     def _sync_cells(self) -> None:
-        """Rebuild the metadata cells for the CURRENT image.
+        """Rebuild the metadata cells for the current image.
 
         A path the current image lacks resolves per the missing-field
         policy, here as in the output: Omit ghosts the cell (empty
         value + omitted flag for the QML dim), Dash shows the em dash.
         Present-but-blank values arrive from the tree already dashed —
         only true absence goes through the policy.
+
+        The tree's INTENT (not its projection) is handed down as the
+        set whose placements survive vacancy: Clear empties the
+        projection wholesale, and without that distinction the grid
+        would read it as "the user removed everything" and lose the
+        arrangement it is about to rebuild.
         """
 
         tree = self._images.fieldsModel
@@ -115,7 +121,7 @@ class LabelController(QObject):
                 ),
                 omitted=absent and omit,
             ))
-        self._matrix.sync_cells(cells)
+        self._matrix.sync_cells(cells, remembered=set(tree.desired_paths()))
 
     # --- Properties ------------------------------------------------------
 

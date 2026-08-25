@@ -124,7 +124,7 @@ Item {
         HoverHandler { id: buttonHover }
         TapHandler {
             onTapped: {
-                // Release the spin box FIRST: the popup grabs focus and
+                // Release the spin box first: the popup grabs focus and
                 // restores it on close, and it must not restore into a
                 // half-edited spin box.
                 root.forceActiveFocus()
@@ -187,7 +187,7 @@ Item {
                                       : AppConfig.containerIdleBorder
 
                         HoverHandler { id: swatchHover }
-                        // Deliberately does NOT close the popup: the whole
+                        // Deliberately does not close the popup: the whole
                         // point of the contrast strip is to judge the
                         // colour after picking it, which is impossible if
                         // selecting dismisses the strip.
@@ -240,7 +240,7 @@ Item {
 
                 Label {
                     anchors.centerIn: parent
-                    text: "1.00 kV   25 pA   19.3 µm"
+                    text: Strings.colorPickerSampleText
                     font.pixelSize: AppConfig.pageBodyFontSize - 3
                     color: root.selectedColor
                     visible: root.previewOpacityPercent < 0
@@ -267,9 +267,9 @@ Item {
                     id: hexField
                     Layout.fillWidth: true
                     font.pixelSize: AppConfig.pageBodyFontSize - 2
-                    placeholderText: "#RRGGBB"
+                    placeholderText: Strings.colorPickerHexPlaceholder
 
-                    // True only while the field holds USER-typed text
+                    // True only while the field holds user-typed text
                     // that has not been committed. Done consults this:
                     // committing an untouched (seeded or swatch-set)
                     // field would re-emit a stale colour and silently
@@ -277,7 +277,7 @@ Item {
                     property bool dirty: false
                     onTextEdited: dirty = true
 
-                    // One commit path for BOTH Enter and the Done
+                    // One commit path for both Enter and the Done
                     // button — typed hex must not need an Enter press
                     // before Done, or Done silently discards it.
                     function commit() {

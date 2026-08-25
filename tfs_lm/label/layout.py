@@ -5,12 +5,12 @@ the SVG writer, the QImage raster, and the PowerPoint object builder —
 consumes the same LabelLayout, so the outputs are identical by
 construction rather than by discipline.
 
-Each metadata cell is TWO texts: the key and the value, laid in their
+Each metadata cell is two texts: the key and the value, laid in their
 own zones. Zones are shared per column (key zone = widest key in the
 column, value zone = widest value), so keys and values line up
 vertically; style.key_alignment / value_alignment position each text
 inside its zone, and style.key_separator appends label-wide punctuation
-to the keys. A custom cell is ONE text spanning the whole cell.
+to the keys. A custom cell is a single text spanning the whole cell.
 
 Mandatory: QFont.setPixelSize, never point sizes. A point size renders
 1.333x larger on the 96 DPI QImage than in the 72 DPI SVG; pixel sizes
@@ -154,7 +154,7 @@ def build_layout(spec: LabelSpec) -> LabelLayout:
     zone the widest value; a column's width is that pair plus the
     key/value gap — or a wider custom text, which contributes only to
     the column total so a long note never disturbs the zone alignment.
-    style.align_columns unifies BOTH zone maxima across columns, so
+    style.align_columns unifies both zone maxima across columns, so
     every column takes the widest column's width and cells align across
     columns. All dimensional style values scale with image width so the
     label covers the same fraction of a 768 px and a 4395 px image.
@@ -180,7 +180,7 @@ def build_layout(spec: LabelSpec) -> LabelLayout:
     n_rows = max(1, len(used_rows))
     n_cols = max(1, len(used_cols))
 
-    # The separator is part of the key for measurement AND rendering,
+    # The separator is part of the key for measurement and rendering alike,
     # so the key zone grows to hold it. Custom cells carry no suffix.
     def key_display(cell) -> str:
         return f"{cell.key_text}{separator}"
@@ -229,7 +229,7 @@ def build_layout(spec: LabelSpec) -> LabelLayout:
     if style.position in (defaults.POSITION_UPPER_LEFT, defaults.POSITION_UPPER_RIGHT):
         y = margin
     else:
-        # bottom_offset is already zero unless a databar exists AND the
+        # bottom_offset is already zero unless a databar exists and the
         # position is on the bottom edge (LabelSpec.bottom_offset).
         y = spec.image_height - margin - height - spec.bottom_offset
 

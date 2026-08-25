@@ -23,13 +23,13 @@ SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".tif", ".tiff", ".png"})
 #
 # Length is load-bearing: at the 700 px minimum window width, with the
 # progress bar collapsed and the Load/Stop/Start row taking 173 px, the
-# message has 471 px. This string measures 434 px in Segoe UI at 16 px.
-# Anything much longer elides on a narrow window.
-STATUS_READY = "Drop a file or batch of files onto Catbug, or click Load, to begin."
+# message has 471 px. The previous, longer wording measured 434 px in
+# Segoe UI at 16 px; anything much longer elides on a narrow window.
+STATUS_READY = "Drop images onto Catbug, or click Load, to begin."
 
 # --- Label matrix --------------------------------------------------------
 # The user configures an explicit rows x columns grid (Excel-like slot
-# matrix); its size IS the check capacity.
+# matrix); its size is exactly the check capacity.
 MAX_COLUMNS = 4
 MAX_ROWS = 4
 MAX_CELLS = MAX_COLUMNS * MAX_ROWS  # 16
@@ -90,7 +90,7 @@ ALIGN_LEFT = 0
 ALIGN_CENTER = 1
 ALIGN_RIGHT = 2
 
-ALIGNMENT_NAMES: tuple[str, ...] = ("Left", "Center", "Right")
+ALIGNMENT_NAMES: tuple[str, ...] = ("Left", "Centre", "Right")
 
 KEY_ALIGNMENT_DEFAULT = ALIGN_LEFT
 VALUE_ALIGNMENT_DEFAULT = ALIGN_RIGHT
@@ -104,11 +104,11 @@ SEPARATOR_SUFFIXES: tuple[str, ...] = ("", ":", " -")
 KEY_SEPARATOR_DEFAULT = 0  # None — the zone gap already separates
 
 # --- Missing-field policy ------------------------------------------------
-# What a label shows when its image lacks a CHECKED field entirely (the
+# What a label shows when its image lacks a checked field entirely (the
 # path is absent from that image's metadata — e.g. an ICD image and the
 # TLD-only SuctionTube). Omit drops the cell from that image's label
 # (an emptied row/column collapses); Dash keeps the cell as "Key: —".
-# Keys on PATH ABSENCE, never on formatted emptiness: a present-but-blank
+# Keys on path absence, never on formatted emptiness: a present-but-blank
 # value renders its em dash under both policies. Index-paired with the
 # combobox, same contract as SEPARATOR_NAMES.
 MISSING_FIELD_OMIT = 0
@@ -160,14 +160,15 @@ OUTPUT_SVG = 1
 OUTPUT_BOTH = 2
 # Sends to the open presentation and writes nothing — no files, no run
 # directory. Appended so stored indices from older versions keep their
-# meaning; the index IS the persisted value and the combo box position.
+# meaning; the index itself is the persisted value and the combo box
+# position.
 OUTPUT_PPT_ONLY = 3
 
 OUTPUT_NAMES: tuple[str, ...] = (
     "Watermarked images",
     "SVG labels",
     "Both",
-    "PowerPoint Only",
+    "PowerPoint only",
 )
 
 OUTPUT_DEFAULT = OUTPUT_BOTH
@@ -188,7 +189,7 @@ def outputs_per_image(mode: int) -> int:
 
 
 # --- PowerPoint ----------------------------------------------------------
-# The two indices are positions in the OPEN PRESENTATION'S TEMPLATE
+# The two indices are positions in the open presentation's template
 # (Designs(1).SlideMaster.CustomLayouts), not slide numbers and not
 # animations — the same meaning Images_To_PPT_v3 gives them, which is
 # why the defaults are its defaults. When a deck has no such layout the
@@ -222,9 +223,15 @@ STATUS_PPT_CONNECTING = "Connecting to PowerPoint…"
 STATUS_PPT_NO_PRESENTATION = (
     "PowerPoint send failed — open a presentation, then press Start again"
 )
-STATUS_PPT_CLOSED = "PowerPoint closed during the send"
-STATUS_PPT_UNAVAILABLE = "PowerPoint sending needs Windows with pywin32 installed"
-STATUS_PPT_NOTHING = "Nothing to send — no image parsed successfully"
+STATUS_PPT_CLOSED = "PowerPoint closed during the send — reopen it and press Start again"
+STATUS_PPT_UNAVAILABLE = (
+    "Sending to PowerPoint is only available on Windows with PowerPoint installed"
+)
+STATUS_PPT_NOTHING = "Nothing to send — no image was read successfully"
+# Stands in for the exception text on an unexpected failure: a raw
+# com_error tuple in the status bar tells the user nothing and looks
+# like a crash. The detail is logged instead.
+STATUS_PPT_FAILED = "PowerPoint send failed — see the log for details"
 
 # --- Run directory -------------------------------------------------------
 RUN_DIR_PREFIX = "labelled_images_"

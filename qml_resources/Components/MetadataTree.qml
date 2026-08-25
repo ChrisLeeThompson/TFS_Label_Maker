@@ -83,10 +83,6 @@ Item {
                         text = ""
                     }
                 }
-                ToolTip.text: Strings.treeSearchTooltip
-                ToolTip.visible: hovered
-                ToolTip.delay: AppConfig.toolTipDelayMs
-                ToolTip.timeout: AppConfig.toolTipTimeoutMs
             }
 
             CheckBox {
@@ -120,7 +116,7 @@ Item {
 
             // The width rows actually occupy: the delegates are sized by
             // columnWidthProvider, which subtracts the scrollbar. The
-            // divider handle must live in the SAME geometry or its line
+            // divider handle must live in the same geometry or its line
             // drifts scrollbarWidth * ratio pixels off the real split.
             readonly property real rowWidth:
                 width - (vScroll.visible ? vScroll.width : 0)
@@ -259,7 +255,7 @@ Item {
                         elide: Text.ElideRight
                         font.pixelSize: AppConfig.pageBodyFontSize
                         font.bold: delegateRoot.isGroupRow
-                        // Dimmed when the CURRENT image lacks this
+                        // Dimmed when the current image lacks this
                         // field. Strict === false (the file's defensive
                         // style): branches and undefined never dim.
                         color: delegateRoot.model.presentInCurrent === false

@@ -48,7 +48,7 @@ ApplicationWindow {
     height: AppConfig.mainWindowHeight
     minimumWidth: AppConfig.mainWindowMinimumWidth
     // The stack's true floor: every fixed-height row at full size, the
-    // tree at its minimum. Below this something MUST clip (the rows
+    // tree at its minimum. Below this something must clip (the rows
     // cannot scroll), so the window refuses to go there — the Output
     // card stays whole at any height the user can reach. Grows live
     // when the preview gains rows; the static config value is only a
@@ -126,7 +126,7 @@ ApplicationWindow {
             // prominent target; the Output card is content-sized.
             ColumnLayout {
                 id: rightColumn
-                // A ColumnLayout INSIDE a RowLayout defaults fillWidth to
+                // A ColumnLayout inside a RowLayout defaults fillWidth to
                 // true (plain items default false) — without pinning it,
                 // this column absorbed the row and crushed the settings
                 // card to 2 px (measured).
@@ -186,11 +186,11 @@ ApplicationWindow {
 
         // --- Row 2: label preview ----------------------------------------
         //
-        // Fixed-height frame: LabelPreview sizes itself for the LARGEST
+        // Fixed-height frame: LabelPreview sizes itself for the largest
         // grid (4 rows) plus the reserved nav strip, so row/column
         // changes never resize the window. Never a hard-coded height on
         // the card — a fixed height plus the Card's clip once cut the
-        // outer rows off AND stopped their DropAreas from receiving
+        // outer rows off and stopped their DropAreas from receiving
         // drag hover; the preview's own safety valve grows this instead
         // of clipping.
         Card {
@@ -210,7 +210,7 @@ ApplicationWindow {
             // can never drift from the real card height.
             Layout.preferredHeight: mainWindow.previewCardHeight
 
-            // The blank grid is always visible — empty cells ARE the
+            // The blank grid is always visible — empty cells are the
             // invitation ("a matrix ready to be populated"), so there
             // is no placeholder text to swap in and out.
             LabelPreview {
@@ -322,12 +322,7 @@ ApplicationWindow {
         id: loadDialog
         title: Strings.loadDialogTitle
         fileMode: FileDialog.OpenFiles
-        nameFilters: [
-            "TFS images (*.tif *.tiff *.png)",
-            "TIFF images (*.tif *.tiff)",
-            "PNG images (*.png)",
-            "All files (*)"
-        ]
+        nameFilters: Strings.loadDialogFilters
         onAccepted: {
             var urls = []
             for (var i = 0; i < selectedFiles.length; ++i) {
@@ -343,7 +338,7 @@ ApplicationWindow {
         id: errorDialog
         anchors.centerIn: parent
         modal: true
-        title: "Error"
+        title: Strings.errorDialogTitle
         standardButtons: Dialog.Ok
         property string detail: ""
 

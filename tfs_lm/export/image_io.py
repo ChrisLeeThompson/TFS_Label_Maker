@@ -13,13 +13,13 @@ hardened by adversarial review:
   hardcodes default XResolution/YResolution/ResolutionUnit even when no
   resolution is passed (verified in its source), so when the SOURCE has
   no resolution tags the defaults are stripped from the written IFD.
-- PNG: the output's ancillary chunks are EXACTLY the source's preserved
+- PNG: the output's ancillary chunks are exactly the source's preserved
   set (PRESERVE_CHUNKS), respliced as raw bytes after IHDR. Everything
   ancillary that Qt's encoder emits is dropped: Qt re-encodes loaded
   text chunks (the 8.4 MB Metadata came back as a 5.8 MB iTXt copy)
   and invents an iCCP that the spec forbids next to the original sRGB.
 - Pixels: output is 8-bit RGB (per the plan). 16-bit sources scale by
-  dtype max (>> 8) on BOTH formats — Qt's own Grayscale16 conversion
+  dtype max (>> 8) on both formats — Qt's own Grayscale16 conversion
   rounds (v*255/65535), which differs by one level on a quarter of the
   range, so PNG pixels are converted through the same numpy path as
   TIFF for one batch-consistent policy.
@@ -169,7 +169,7 @@ def watermark_tiff(source: Path, dest: Path, spec: LabelSpec) -> None:
             photometric="rgb",
             software=False,      # suppresses tag 305
             description=None,
-            metadata=None,       # REQUIRED: else tifffile writes a JSON tag 270
+            metadata=None,       # Required: else tifffile writes a JSON tag 270
             extratags=extratags,
             **kwargs,
         )

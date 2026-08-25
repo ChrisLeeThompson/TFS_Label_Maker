@@ -219,7 +219,8 @@ FIELDS_BY_KEY: dict[str, CanonicalField] = {f.key: f for f in CANONICAL_FIELDS}
 # Raw dotted path -> the field whose unit/kind formats it. This is how
 # the label renderer knows Microscope.ActiveBeam.HV is volts with an SI
 # prefix while the tree's checked paths stay raw. setdefault so the
-# FIRST field claiming a path wins, mirroring the candidate order above.
+# The first field claiming a path wins, mirroring the candidate order
+# above.
 _FIELD_BY_PATH: dict[str, CanonicalField] = {}
 for _field in CANONICAL_FIELDS:
     for _candidate in _field.ini:
