@@ -1,8 +1,13 @@
 # TFS Label Maker
 
-<!-- Full documentation: https://<site>/scripts/tfs_label_maker/ (enable this link when the site is live) -->
+> [!NOTE]
+> **Full documentation:** https://chrisleethompson.github.io/scripts/tfs_label_maker/
 
 A PySide6/QML desktop utility that reads the metadata in `.tif` and `.png` images from a Thermo Scientific SEM-FIB microscope and builds a customizable label from the selected fields. Labels can be exported as `.svg` files, burned into a copy of the original image, or both, for single images or batches. Images and labels can also be sent to an active PowerPoint presentation.
+
+## Documentation
+
+Full documentation: https://chrisleethompson.github.io/scripts/tfs_label_maker/
 
 ## Features
 
